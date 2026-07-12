@@ -389,6 +389,26 @@ async function fetchAllIssues(milestoneId, extraParams) {
   return all;
 }
 
+// Cross-check a paginated fetch against Backlog's own /issues/count endpoint,
+// using the exact same filters. If they don't match, pagination likely missed
+// something (e.g. an API quirk) — surface it as a warning instead of failing silently.
+async function verifyFetchCount(milestoneId, extraParams, actualLength, label) {
+  try {
+    const countResp = await backlogGet('/api/v2/issues/count', {
+      projectId: [PROJECT_ID],
+      milestoneId: [milestoneId],
+      ...extraParams
+    });
+    const expected = countResp?.count;
+    if (typeof expected === 'number' && expected !== actualLength) {
+      return `${label}: fetch được ${actualLength} issue nhưng Backlog count API báo ${expected} issue — có thể bị sót do phân trang, nên kiểm tra lại thủ công trên Backlog.`;
+    }
+  } catch (e) {
+    // count endpoint unreachable/unsupported — not fatal, just skip the cross-check
+  }
+  return null;
+}
+
 // ── Core calculation for one month ─────────────────────────────────
 async function calcMonth(milestoneId, year, month) {
   const monthStart = `${year}-${pad2(month)}-01`;
@@ -401,11 +421,18 @@ async function calcMonth(milestoneId, year, month) {
     fetchAllIssues(milestoneId, { startDateUntil: monthStart, dueDateSince: monthEnd })
   ]);
 
+  const monthTag = monthLabel(year, month);
+  const paginationWarnings = (await Promise.all([
+    verifyFetchCount(milestoneId, { startDateSince: monthStart, startDateUntil: monthEnd }, setA.length, `Fetch A — startDate trong ${monthTag}`),
+    verifyFetchCount(milestoneId, { dueDateSince: monthStart, dueDateUntil: monthEnd }, setB.length, `Fetch B — dueDate trong ${monthTag}`),
+    verifyFetchCount(milestoneId, { startDateUntil: monthStart, dueDateSince: monthEnd }, setC.length, `Fetch C — spanning ${monthTag}`)
+  ])).filter(Boolean);
+
   const map = new Map();
   [...setA, ...setB, ...setC].forEach(i => map.set(i.id, i));
   const merged = Array.from(map.values()).filter(i => !(i.summary || '').includes('[ROOT]'));
 
-  const warnings = [];
+  const warnings = [...paginationWarnings];
   const groups = {}; // type -> {est, act, count}
   let estMonth = 0, actMonth = 0, childCount = 0, subCount = 0;
 
@@ -557,6 +584,7 @@ async function runSync() {
 
     // All issues in the whole milestone (for completion-date check), no date filter
     const allMilestoneIssues = await fetchAllIssues(milestoneId, {});
+    const wholeMilestoneWarning = await verifyFetchCount(milestoneId, {}, allMilestoneIssues.length, `Toàn bộ milestone dự án (${milestoneName})`);
     const childPBIs = allMilestoneIssues.filter(i => i.parentIssueId == null && !(i.summary || '').includes('[ROOT]'));
 
     let completionDate, scheduleVariance;
@@ -613,6 +641,7 @@ ${allBlocks.map(b => b.raw).join('\n\n')}`;
 
     // Warnings across all months + note for months with no issues in scope
     const allWarnings = [];
+    if (wholeMilestoneWarning) allWarnings.push(wholeMilestoneWarning);
     monthResults.forEach(mr => {
       if (mr.issueCount === 0) allWarnings.push(`${monthLabel(mr.year, mr.month)}: no issues in scope for this month — breakdown block skipped.`);
       allWarnings.push(...mr.warnings);
