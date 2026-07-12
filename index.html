@@ -187,7 +187,7 @@
   <div class="card">
     <div class="panel-head">
       <h2>🔄 Sync Result cho Root PBI</h2>
-      <p>Tính lại Est/Act hours theo tháng (có prorate cho Child PBI, cộng dồn cho Subtask), rồi cập nhật mục <code>## Result</code> lên Backlog. Không đụng tới các phần khác của description.</p>
+      <p>Tính lại Est/Act hours theo tháng (có prorate cho Child PBI, cộng dồn cho Subtask) trong phạm vi <b>milestone dự án</b> của Root — không phải milestone tháng — rồi cập nhật mục <code>## Result</code> lên Backlog. Không đụng tới các phần khác của description.</p>
     </div>
 
     <div class="form-body">
@@ -195,6 +195,12 @@
       <div class="field">
         <label>Root PBI key <span class="req">*</span></label>
         <input type="text" id="rootKey" placeholder="DEV_MIERUCA_HEAT_OPT-7715" />
+      </div>
+
+      <div class="field">
+        <label>Milestone dự án (tùy chọn)</label>
+        <input type="text" id="milestoneOverride" placeholder="Để trống = tự nhận diện. VD: 523565" />
+        <span class="hint-text">Root thường có 2 milestone: 1 milestone tháng (VD "2026-Jul", dùng cho Hours Report) và 1 milestone dự án (VD "Refactor optimizer"). Tool tự chọn milestone không phải dạng tháng — nếu chọn sai hoặc Root có nhiều milestone dự án, nhập ID đúng vào đây (lấy từ URL <code>condition.fixedVersionId=</code>).</span>
       </div>
 
       <div class="field">
@@ -328,6 +334,7 @@ function resetSyncState() {
   hideStatus();
 }
 document.getElementById('rootKey').addEventListener('input', resetSyncState);
+document.getElementById('milestoneOverride').addEventListener('input', resetSyncState);
 
 // ── Backlog API ───────────────────────────────────────────────────
 async function backlogGet(path, params) {
@@ -510,8 +517,34 @@ async function runSync() {
     if (!root.milestone || root.milestone.length === 0) {
       throw new Error(`Root PBI ${rootKey} chưa gắn milestone.`);
     }
-    const milestoneId = root.milestone[0].id;
-    const milestoneName = root.milestone[0].name;
+
+    const override = document.getElementById('milestoneOverride').value.trim();
+    let milestoneId, milestoneName, milestoneSource;
+    if (override) {
+      milestoneId = override;
+      const found = root.milestone.find(m => String(m.id) === String(override));
+      milestoneName = found ? found.name : `#${override}`;
+      milestoneSource = 'nhập thủ công';
+    } else {
+      const MONTHLY_MILESTONE_RE = /^\d{4}-[A-Za-z]{3}$/; // e.g. "2026-Jul"
+      const projectMilestones = root.milestone.filter(m => !MONTHLY_MILESTONE_RE.test(m.name));
+      if (projectMilestones.length === 1) {
+        milestoneId = projectMilestones[0].id;
+        milestoneName = projectMilestones[0].name;
+        milestoneSource = 'tự nhận diện';
+      } else if (projectMilestones.length === 0) {
+        throw new Error(
+          `Root PBI ${rootKey} chỉ có milestone dạng tháng (${root.milestone.map(m => m.name).join(', ')}), ` +
+          `không tìm được milestone dự án. Vui lòng nhập Milestone ID thủ công ở ô "Milestone dự án".`
+        );
+      } else {
+        throw new Error(
+          `Root PBI ${rootKey} có nhiều milestone không phải dạng tháng: ` +
+          `${projectMilestones.map(m => `${m.name} (#${m.id})`).join(', ')}. ` +
+          `Vui lòng nhập đúng Milestone ID vào ô "Milestone dự án" để chọn 1 trong số này.`
+        );
+      }
+    }
     const plannedDue = root.dueDate ? root.dueDate.slice(0,10) : null;
 
     const monthResults = [];
@@ -589,7 +622,9 @@ ${allBlocks.map(b => b.raw).join('\n\n')}`;
 
     // Render UI
     document.getElementById('scopeLine').innerHTML =
-      `Root: <b>${root.summary}</b> (${root.issueKey})<br>Milestone: <b>${milestoneName}</b><br>` + scopeLines.join('<br>');
+      `Root: <b>${root.summary}</b> (${root.issueKey})<br>` +
+      `Milestone dự án: <b>${milestoneName}</b> (#${milestoneId}) <span class="hint-text">[${milestoneSource}]</span><br>` +
+      scopeLines.join('<br>');
     document.getElementById('scopeWrap').style.display = 'block';
 
     if (allWarnings.length > 0) {
