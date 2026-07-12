@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PBI Creator — DEV_MIERUCA_HEAT_OPT</title>
+  <title>Sync Result — DEV_MIERUCA_HEAT_OPT</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -25,13 +25,15 @@
       --error-bg: #fff2f2;
       --error-border: #f5a0a0;
       --error-text: #8b1a1a;
+      --warn-bg: #fff9ec;
+      --warn-border: #f0c869;
+      --warn-text: #8a6100;
       --tag-bg: #ededfd;
       --tag-text: #3535a8;
       --radius-sm: 6px;
       --radius: 10px;
       --radius-lg: 14px;
       --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-      --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.04);
     }
 
     body {
@@ -44,336 +46,124 @@
       line-height: 1.5;
     }
 
-    /* ── Page header ── */
-    .page-header {
-      text-align: center;
-      margin-bottom: 2rem;
-    }
-    .page-header h1 {
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: -0.4px;
-      margin-bottom: 4px;
-    }
+    .page-header { text-align: center; margin-bottom: 2rem; }
+    .page-header h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; margin-bottom: 4px; }
     .page-header p { font-size: 12px; color: var(--muted); }
 
-    .container {
-      max-width: 600px;
-      margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-    }
+    .container { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
 
-    /* ── Card ── */
-    .card {
-      background: var(--surface);
-      border-radius: var(--radius-lg);
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow);
-    }
+    .card { background: var(--surface); border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow); }
 
-    /* ── API key card ── */
-    .api-card {
-      background: var(--surface);
-      border-radius: var(--radius-lg);
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow);
-      padding: 1.1rem 1.25rem;
-    }
-    .api-card-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 0.6rem;
-    }
-    .api-label {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.6px;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-    .api-status {
-      font-size: 11px;
-      font-weight: 600;
-      padding: 2px 9px;
-      border-radius: 20px;
-    }
+    .api-card { background: var(--surface); border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow); padding: 1.1rem 1.25rem; }
+    .api-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; }
+    .api-label { font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--muted); }
+    .api-status { font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 20px; }
     .api-status.ok  { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
     .api-status.empty { background: var(--surface-2); color: var(--faint); border: 1px solid var(--border); }
     .input-row { display: flex; gap: 6px; }
     .api-hint { font-size: 11px; color: var(--faint); margin-top: 5px; }
 
-    /* ── Tabs ── */
-    .tabs {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+    .panel-head {
+      padding: 1.1rem 1.5rem;
       border-bottom: 1px solid var(--border);
-      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-      overflow: hidden;
     }
-    .tab {
-      padding: 0.9rem 1rem;
-      font-size: 13px;
-      font-weight: 600;
-      text-align: center;
-      cursor: pointer;
-      color: var(--muted);
-      border: none;
-      background: var(--surface-2);
-      transition: color 0.15s, background 0.15s;
-      letter-spacing: -0.1px;
-    }
-    .tab.active {
-      color: var(--accent);
-      background: var(--surface);
-      box-shadow: inset 0 -2px 0 var(--accent);
-    }
-    .tab:hover:not(.active) { background: #f3f3f0; color: var(--text); }
+    .panel-head h2 { font-size: 15px; font-weight: 700; }
+    .panel-head p { font-size: 12.5px; color: var(--muted); margin-top: 4px; line-height: 1.6; }
 
-    /* ── Form ── */
-    .form-body {
-      display: flex;
-      flex-direction: column;
-    }
-    .panel { display: none; }
-    .panel.active { display: flex; flex-direction: column; gap: 1.25rem; padding: 1.75rem 2rem; }
+    .form-body { display: flex; flex-direction: column; gap: 1.25rem; padding: 1.5rem 1.5rem 1.75rem; }
 
     .section-label {
-      font-size: 10px;
-      font-weight: 800;
-      color: var(--faint);
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      padding-bottom: 0.6rem;
-      border-bottom: 1px solid var(--border);
-      margin-top: 0.25rem;
+      font-size: 10px; font-weight: 800; color: var(--faint); text-transform: uppercase;
+      letter-spacing: 0.8px; padding-bottom: 0.6rem; border-bottom: 1px solid var(--border); margin-top: 0.25rem;
     }
 
     .field { display: flex; flex-direction: column; gap: 6px; }
     .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
-    label {
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--muted);
-      display: flex;
-      align-items: center;
-      gap: 3px;
-    }
+    label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); display: flex; align-items: center; gap: 3px; }
     label .req { color: #e05; }
 
-    input[type="text"],
-    input[type="password"],
-    input[type="date"],
-    textarea,
-    select {
-      width: 100%;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 0 11px;
-      font-size: 13px;
-      color: var(--text);
-      background: var(--surface-2);
-      outline: none;
-      font-family: inherit;
-      transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+    input[type="text"], input[type="month"], input[type="password"] {
+      width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 11px;
+      font-size: 13px; color: var(--text); background: var(--surface-2); outline: none; font-family: inherit;
+      height: 36px; transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
     }
-    input[type="text"],
-    input[type="password"],
-    input[type="date"],
-    select { height: 36px; }
-    textarea {
-      padding: 9px 11px;
-      resize: vertical;
-      min-height: 72px;
-      line-height: 1.5;
-    }
-    input:focus, textarea:focus, select:focus {
-      border-color: var(--border-focus);
-      background: var(--surface);
-      box-shadow: 0 0 0 3px rgba(91,91,214,0.1);
-    }
-    select { cursor: pointer; }
+    input:focus { border-color: var(--border-focus); background: var(--surface); box-shadow: 0 0 0 3px rgba(91,91,214,0.1); }
 
     .icon-btn {
-      height: 36px;
-      min-width: 36px;
-      padding: 0 10px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      background: var(--surface-2);
-      cursor: pointer;
-      font-size: 14px;
-      color: var(--muted);
-      flex-shrink: 0;
-      transition: background 0.15s, border-color 0.15s;
-      display: flex; align-items: center; justify-content: center;
+      height: 36px; min-width: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--surface-2); cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent);
+      flex-shrink: 0; transition: background 0.15s, border-color 0.15s; display: flex; align-items: center; justify-content: center;
     }
     .icon-btn:hover { background: #efefed; border-color: #d4d4d0; }
     .icon-btn.danger:hover { background: var(--error-bg); border-color: var(--error-border); color: var(--error-text); }
 
-    /* ── Tags ── */
     .tags-wrapper {
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      background: var(--surface-2);
-      padding: 5px 7px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      cursor: text;
-      transition: border-color 0.15s, box-shadow 0.15s;
-      min-height: 36px;
-      align-items: center;
-    }
-    .tags-wrapper:focus-within {
-      border-color: var(--border-focus);
-      background: var(--surface);
-      box-shadow: 0 0 0 3px rgba(91,91,214,0.1);
+      border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2);
+      padding: 6px 7px; display: flex; flex-wrap: wrap; gap: 5px; min-height: 20px; align-items: center;
     }
     .tag {
-      background: var(--tag-bg);
-      color: var(--tag-text);
-      font-size: 12px;
-      font-weight: 500;
-      padding: 2px 6px 2px 8px;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      gap: 3px;
-      line-height: 1.4;
+      background: var(--tag-bg); color: var(--tag-text); font-size: 12px; font-weight: 600;
+      padding: 4px 6px 4px 9px; border-radius: 5px; display: flex; align-items: center; gap: 5px; line-height: 1.3;
     }
-    .tag button {
-      border: none; background: none; cursor: pointer;
-      color: var(--tag-text); font-size: 15px; line-height: 1;
-      padding: 0; opacity: 0.5; display: flex; align-items: center;
-    }
+    .tag button { border: none; background: none; cursor: pointer; color: var(--tag-text); font-size: 15px; line-height: 1; padding: 0; opacity: 0.55; display: flex; align-items: center; }
     .tag button:hover { opacity: 1; }
-    .tag-input {
-      border: none !important; background: transparent !important;
-      padding: 0 4px !important; height: 24px !important;
-      font-size: 13px; min-width: 100px; flex: 1; outline: none;
-      box-shadow: none !important;
-    }
+    .tag-empty { font-size: 12px; color: var(--faint); padding: 3px 4px; }
+
     .hint-text { font-size: 11px; color: var(--faint); }
 
-    /* ── Divider ── */
     .divider { height: 1px; background: var(--border); }
 
-    /* ── Submit btn ── */
+    .btn-row { display: flex; gap: 10px; }
     .btn-submit {
-      width: 100%;
-      height: 40px;
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: var(--radius-sm);
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-      letter-spacing: 0.2px;
-      transition: background 0.15s, opacity 0.15s, transform 0.1s;
-      box-shadow: 0 1px 3px rgba(91,91,214,0.3);
+      flex: 1; height: 40px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 700; cursor: pointer; letter-spacing: 0.2px;
+      transition: background 0.15s, opacity 0.15s, transform 0.1s; box-shadow: 0 1px 3px rgba(91,91,214,0.3);
     }
-    .btn-submit:hover { background: #4a4ac4; }
-    .btn-submit:active { transform: scale(0.99); }
-    .btn-submit:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+    .btn-submit:hover:not(:disabled) { background: #4a4ac4; }
+    .btn-submit:active:not(:disabled) { transform: scale(0.99); }
+    .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-secondary {
+      background: var(--surface-2); color: var(--text); border: 1px solid var(--border); box-shadow: none;
+    }
+    .btn-secondary:hover:not(:disabled) { background: #efefed; }
 
-    /* ── Result ── */
-    .result {
-      display: none;
-      padding: 0.9rem 1rem;
-      border-radius: var(--radius-sm);
-      font-size: 13px;
-      line-height: 1.6;
-    }
-    .result.success {
-      background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success-text);
-    }
-    .result.error {
-      background: var(--error-bg); border: 1px solid var(--error-border); color: var(--error-text);
-    }
+    .result { display: none; padding: 0.9rem 1rem; border-radius: var(--radius-sm); font-size: 13px; line-height: 1.6; }
+    .result.success { background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success-text); }
+    .result.error { background: var(--error-bg); border: 1px solid var(--error-border); color: var(--error-text); }
+    .result.info { background: var(--accent-bg); border: 1px solid #d0d0f8; color: var(--accent); }
     .result a { color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
 
-    /* ── Preview ── */
-    .preview-toggle-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+    .warn-box {
+      display: none; background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text);
+      border-radius: var(--radius-sm); padding: 0.8rem 1rem; font-size: 12.5px; line-height: 1.7;
     }
-    .preview-toggle {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--accent);
-      background: var(--accent-bg);
-      border: 1px solid #d0d0f8;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      padding: 4px 10px;
-      transition: background 0.15s;
-    }
-    .preview-toggle:hover { background: #e4e4fc; }
+    .warn-box b { display: block; margin-bottom: 4px; }
+    .warn-box ul { padding-left: 1.1rem; }
+
+    .scope-line { font-size: 12px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 11px; line-height: 1.7; }
+    .scope-line b { color: var(--text); }
 
     .preview-box {
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 1.25rem 1.5rem;
-      font-size: 13px;
-      line-height: 1.7;
-      max-height: 380px;
-      overflow-y: auto;
-      display: none;
-      color: var(--text);
+      display: none; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 1.25rem 1.5rem; font-size: 13px; line-height: 1.7; max-height: 460px; overflow-y: auto; color: var(--text);
     }
-    .preview-box h1, .preview-box h2 {
-      font-size: 13px; font-weight: 700; margin: 0.8rem 0 0.3rem;
-      padding-bottom: 4px; border-bottom: 1px solid var(--border);
-      color: var(--text);
-    }
-    .preview-box h2:first-child { margin-top: 0; }
+    .preview-box h1, .preview-box h2, .preview-box h3 { font-size: 13px; font-weight: 700; margin: 0.9rem 0 0.4rem; padding-bottom: 4px; border-bottom: 1px solid var(--border); color: var(--text); }
+    .preview-box h2:first-child, .preview-box h3:first-child { margin-top: 0; }
     .preview-box p { margin: 0.3rem 0; }
-    .preview-box ul { padding-left: 1.2rem; margin: 0.3rem 0; }
-    .preview-box li { margin: 0.15rem 0; }
-    .preview-box table {
-      width: 100%; border-collapse: collapse; font-size: 12px; margin: 0.4rem 0;
-    }
-    .preview-box th, .preview-box td {
-      border: 1px solid var(--border); padding: 5px 8px; text-align: left;
-    }
+    .preview-box table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 0.4rem 0; }
+    .preview-box th, .preview-box td { border: 1px solid var(--border); padding: 5px 8px; text-align: left; }
     .preview-box th { background: var(--bg); font-weight: 600; color: var(--muted); }
-    .preview-box hr { border: none; border-top: 1px solid var(--border); margin: 0.6rem 0; }
     .preview-box strong { font-weight: 700; }
-    .preview-box code {
-      background: #f0f0f0; border-radius: 3px; padding: 1px 5px;
-      font-family: 'SF Mono', monospace; font-size: 11px;
-    }
 
-    /* ── Translate indicator ── */
-    .translating {
-      font-size: 11px; color: var(--accent); font-style: italic;
-      display: none; align-items: center; gap: 4px;
-    }
-    .translating.show { display: flex; }
+    .spinner-inline { display: inline-block; width: 11px; height: 11px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: -1px; margin-right: 5px; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .spinner {
-      width: 10px; height: 10px;
-      border: 2px solid var(--accent-bg);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-      flex-shrink: 0;
-    }
   </style>
 </head>
 <body>
 
 <div class="page-header">
-  <h1>PBI Creator</h1>
+  <h1>Sync Result</h1>
   <p>DEV_MIERUCA_HEAT_OPT · faber-wi.backlog.jp</p>
 </div>
 
@@ -393,311 +183,69 @@
     <p class="api-hint">Saved automatically in your browser — no need to re-enter next time.</p>
   </div>
 
-  <!-- Main card -->
+  <!-- Sync card -->
   <div class="card">
-    <div class="tabs">
-      <button class="tab active" onclick="switchTab('root')">📌 Root PBI</button>
-      <button class="tab" onclick="switchTab('child')">🔹 Child PBI</button>
-      <button class="tab" onclick="switchTab('sync')">🔄 Sync Root</button>
+    <div class="panel-head">
+      <h2>🔄 Sync Result cho Root PBI</h2>
+      <p>Tính lại Est/Act hours theo tháng (có prorate cho Child PBI, cộng dồn cho Subtask), rồi cập nhật mục <code>## Result</code> lên Backlog. Không đụng tới các phần khác của description.</p>
     </div>
 
-    <!-- ROOT PBI -->
-    <div id="rootPanel" class="form-body panel active">
-
-      <div class="section-label">Basic Info</div>
-
-      <div class="field">
-        <label>Summary <span class="req">*</span></label>
-        <input type="text" id="r_summary" placeholder="PBI - [Milestone] Migrate remaining pages to Webpack" />
-      </div>
-
-      <div class="field">
-        <label>Goal <span class="req">*</span></label>
-        <div class="translating" id="r_goal_translating"><div class="spinner"></div> Translating...</div>
-        <textarea id="r_goal" placeholder="Enter goal in Vietnamese or English..." rows="2" onblur="autoTranslate('r_goal', 'r_goal_translating')"></textarea>
-      </div>
-
-      <div class="field">
-        <label>Requested by</label>
-        <select id="r_requester"><option value="">— Select —</option></select>
-      </div>
-
-      <div class="field-row">
-        <div class="field">
-          <label>Assignee <span class="req">*</span></label>
-          <select id="r_assignee"><option value="">— Select —</option></select>
-        </div>
-        <div class="field">
-          <label>Milestone ID</label>
-          <input type="text" id="r_milestone" placeholder="e.g. 524132" />
-        </div>
-      </div>
-
-      <div class="section-label">Scope</div>
-
-      <div class="field">
-        <label>In scope</label>
-        <div class="tags-wrapper" onclick="focusTagInput('inScopeInput')">
-          <input class="tag-input" id="inScopeInput" placeholder="Type then press Enter..." onkeydown="addTag(event,'inScope','inScopeInput')" />
-        </div>
-        <span class="hint-text">Press Enter after each item</span>
-      </div>
-
-      <div class="field">
-        <label>Out of scope</label>
-        <div class="tags-wrapper" onclick="focusTagInput('outScopeInput')">
-          <input class="tag-input" id="outScopeInput" placeholder="Type then press Enter..." onkeydown="addTag(event,'outScope','outScopeInput')" />
-        </div>
-      </div>
-
-      <div class="section-label">Timeline & Team</div>
-
-      <div class="field-row">
-        <div class="field">
-          <label>Start date</label>
-          <input type="date" id="r_start" />
-        </div>
-        <div class="field">
-          <label>Due date</label>
-          <input type="date" id="r_due" />
-        </div>
-      </div>
-
-      <div class="field-row">
-        <div class="field">
-          <label>Reviewer</label>
-          <select id="r_reviewer"><option value="">— Select —</option></select>
-        </div>
-        <div class="field">
-          <label>Tester</label>
-          <select id="r_tester"><option value="">— Select —</option></select>
-        </div>
-      </div>
-
-      <div class="divider"></div>
-
-      <div class="preview-toggle-row">
-        <button class="preview-toggle" onclick="togglePreview('rootPreview', this)">Preview description ▾</button>
-      </div>
-      <div class="preview-box" id="rootPreview"></div>
-
-      <button class="btn-submit" onclick="submitRoot()">Create Root PBI →</button>
-      <div class="result" id="rootResult"></div>
-    </div>
-
-    <!-- CHILD PBI -->
-    <div id="childPanel" class="form-body panel">
-
-      <div class="section-label">Basic Info</div>
-
-      <div class="field">
-        <label>Parent PBI key <span class="req">*</span></label>
-        <input type="text" id="c_parent" placeholder="DEV_MIERUCA_HEAT_OPT-7715" />
-      </div>
-
-      <div class="field">
-        <label>Summary <span class="req">*</span></label>
-        <input type="text" id="c_summary" placeholder="PBI - Migrate test-report page to Webpack + unit tests" />
-      </div>
-
-      <div class="field">
-        <label>Background</label>
-        <div class="translating" id="c_background_translating"><div class="spinner"></div> Translating...</div>
-        <textarea id="c_background" placeholder="Enter background in Vietnamese or English..." rows="2" onblur="autoTranslate('c_background', 'c_background_translating')"></textarea>
-      </div>
-
-      <div class="field">
-        <label>Goal <span class="req">*</span></label>
-        <div class="translating" id="c_goal_translating"><div class="spinner"></div> Translating...</div>
-        <textarea id="c_goal" placeholder="Enter goal in Vietnamese or English..." rows="2" onblur="autoTranslate('c_goal', 'c_goal_translating')"></textarea>
-      </div>
-
-      <div class="section-label">Scope & Acceptance Criteria</div>
-
-      <div class="field">
-        <label>In scope</label>
-        <div class="tags-wrapper" onclick="focusTagInput('c_inScopeInput')">
-          <input class="tag-input" id="c_inScopeInput" placeholder="Type then press Enter..." onkeydown="addTag(event,'c_inScope','c_inScopeInput')" />
-        </div>
-      </div>
-
-      <div class="field">
-        <label>Out of scope</label>
-        <div class="tags-wrapper" onclick="focusTagInput('c_outScopeInput')">
-          <input class="tag-input" id="c_outScopeInput" placeholder="Type then press Enter..." onkeydown="addTag(event,'c_outScope','c_outScopeInput')" />
-        </div>
-      </div>
-
-      <div class="field">
-        <label>Acceptance Criteria</label>
-        <div class="tags-wrapper" onclick="focusTagInput('c_acInput')">
-          <input class="tag-input" id="c_acInput" placeholder="Type then press Enter..." onkeydown="addTag(event,'c_ac','c_acInput')" />
-        </div>
-      </div>
-
-      <div class="section-label">Team & Timeline</div>
-
-      <div class="field-row">
-        <div class="field">
-          <label>Assignee <span class="req">*</span></label>
-          <select id="c_assignee"><option value="">— Select —</option></select>
-        </div>
-        <div class="field">
-          <label>Milestone ID</label>
-          <input type="text" id="c_milestone" placeholder="e.g. 524132" />
-        </div>
-      </div>
-
-      <div class="field-row">
-        <div class="field">
-          <label>Reviewer</label>
-          <select id="c_reviewer"><option value="">— Select —</option></select>
-        </div>
-        <div class="field">
-          <label>Tester</label>
-          <select id="c_tester"><option value="">— Select —</option></select>
-        </div>
-      </div>
-
-      <div class="field-row">
-        <div class="field">
-          <label>Start date</label>
-          <input type="date" id="c_start" />
-        </div>
-        <div class="field">
-          <label>Due date</label>
-          <input type="date" id="c_due" />
-        </div>
-      </div>
-
-      <div class="field-row">
-        <div class="field">
-          <label>Est. hours</label>
-          <input type="text" id="c_est" placeholder="e.g. 6" />
-        </div>
-        <div class="field">
-          <label>Story points</label>
-          <select id="c_sp">
-            <option value="">—</option>
-            <option>1</option><option>2</option><option>3</option><option>5</option><option>8</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="divider"></div>
-
-      <div class="preview-toggle-row">
-        <button class="preview-toggle" onclick="togglePreview('childPreview', this)">Preview description ▾</button>
-      </div>
-      <div class="preview-box" id="childPreview"></div>
-
-      <button class="btn-submit" onclick="submitChild()">Create Child PBI →</button>
-      <div class="result" id="childResult"></div>
-    </div>
-
-    <!-- SYNC ROOT -->
-    <div id="syncPanel" class="form-body panel">
-
-      <div class="section-label">Sync Root PBI</div>
-
-      <p style="font-size:13px; color:var(--muted); line-height:1.6;">
-        Fetch all PBIs in the milestone and update section <strong>7. Child PBIs</strong> in the Root PBI description with the latest status, assignee, and hours.
-      </p>
+    <div class="form-body">
 
       <div class="field">
         <label>Root PBI key <span class="req">*</span></label>
-        <input type="text" id="s_rootKey" placeholder="DEV_MIERUCA_HEAT_OPT-7715" />
+        <input type="text" id="rootKey" placeholder="DEV_MIERUCA_HEAT_OPT-7715" />
       </div>
 
       <div class="field">
-        <label>Milestone ID <span class="req">*</span></label>
-        <input type="text" id="s_milestoneId" placeholder="e.g. 524132" />
+        <label>Tháng cần sync <span class="req">*</span></label>
+        <div class="input-row">
+          <input type="month" id="monthPicker" />
+          <button class="icon-btn" onclick="addMonth()">+ Thêm tháng</button>
+        </div>
+        <div class="tags-wrapper" id="monthTags">
+          <span class="tag-empty" id="monthEmptyHint">Chưa chọn tháng nào</span>
+        </div>
+        <span class="hint-text">Có thể thêm nhiều tháng — mỗi tháng sẽ có 1 bảng breakdown riêng, xếp cũ → mới.</span>
       </div>
 
-      <div id="syncPreviewWrap" style="display:none;">
-        <div class="section-label" style="margin-top:0.25rem;">Preview — Child PBIs found</div>
-        <div id="syncTable" style="overflow-x:auto; font-size:12px;"></div>
+      <div class="divider"></div>
+
+      <div class="btn-row">
+        <button class="btn-submit btn-secondary" id="fetchBtn" onclick="runSync()">1) Fetch &amp; Tính toán</button>
+        <button class="btn-submit" id="updateBtn" onclick="doUpdate()" disabled>2) Cập nhật lên Backlog →</button>
       </div>
 
-      <div style="display:flex; gap:10px;">
-        <button class="btn-submit" style="background:var(--surface-2); color:var(--text); border:1px solid var(--border); box-shadow:none;" onclick="previewSync()">Preview ↗</button>
-        <button class="btn-submit" id="syncBtn" onclick="doSync()" disabled>Sync to Backlog →</button>
+      <div class="result" id="statusResult"></div>
+
+      <div id="scopeWrap" style="display:none;">
+        <div class="section-label">Phạm vi đã fetch</div>
+        <div class="scope-line" id="scopeLine"></div>
       </div>
-      <div class="result" id="syncResult"></div>
+
+      <div class="warn-box" id="warnBox">
+        <b>⚠️ Warnings</b>
+        <ul id="warnList"></ul>
+      </div>
+
+      <div id="previewWrap" style="display:none;">
+        <div class="section-label">Preview — nội dung sẽ ghi vào <code>## Result</code></div>
+        <div class="preview-box" id="resultPreview"></div>
+      </div>
+
     </div>
   </div>
 </div>
 
 <script>
-const TEAM = [
-  { name: 'Nguyen Viet Diem (me)', id: 399390 },
-  { name: 'Lam Du Thach',          id: 431793 },
-  { name: 'Ha Tuan Duc',           id: 460097 },
-  { name: 'Le Nguyen Trung Truc',  id: 554039 },
-  { name: 'Nguyen Le Minh',        id: 542390 },
-  { name: 'Pham Minh Luan',        id: 542388 },
-  { name: 'Tran Minh Khoi',        id: 647002 },
-  { name: 'Kota Kobayashi',         id: 567335 },
-];
+const PROJECT_KEY  = 'DEV_MIERUCA_HEAT_OPT';
+const BACKLOG_HOST = 'https://faber-wi.backlog.jp';
+const PROJECT_ID   = 174677;
 
-// Tester custom field item IDs (fetched from Backlog on load)
-// key = numeric user ID, value = item ID in custom field list
-let TESTER_ITEM_MAP = {};
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-async function loadTesterItems() {
-  const key = localStorage.getItem('backlog_api_key');
-  if (!key) return;
-  try {
-    const res = await fetch(`${BACKLOG_HOST}/api/v2/projects/${PROJECT_KEY}/customFields?apiKey=${key}`);
-    const fields = await res.json();
-    const testerField = fields.find(f => f.id === TESTER_FIELD_ID);
-    if (testerField && testerField.items) {
-      // items: [{id, name, displayOrder}] — name matches member name
-      testerField.items.forEach(item => {
-        const member = TEAM.find(m => item.name.toLowerCase().includes(m.name.split(' ')[0].toLowerCase()) ||
-          m.name.toLowerCase().includes(item.name.split(' ')[0].toLowerCase()));
-        if (member) TESTER_ITEM_MAP[member.id] = item.id;
-      });
-    }
-  } catch(e) { console.warn('Could not load tester items:', e); }
-}
-
-function getTesterItemId(userId) {
-  return TESTER_ITEM_MAP[userId] || null;
-}
-
-const PROJECT_KEY      = 'DEV_MIERUCA_HEAT_OPT';
-const BACKLOG_HOST     = 'https://faber-wi.backlog.jp';
-const ISSUE_TYPE_PBI   = 869744;
-const PRIORITY_ID      = 3;
-const PROJECT_ID       = 174677;
-const CATEGORY_ID      = 509338;
-const TESTER_FIELD_ID  = 112331;
-
-const tags = { inScope:[], outScope:[], c_inScope:[], c_outScope:[], c_ac:[] };
-
-// ── Populate selects ──────────────────────────────────────────────
-function populateSelects() {
-  ['r_requester','r_assignee','r_reviewer','r_tester','c_assignee','c_reviewer','c_tester'].forEach(id => {
-    const el = document.getElementById(id);
-    TEAM.forEach(m => {
-      const o = document.createElement('option');
-      o.value = m.id; o.textContent = m.name;
-      el.appendChild(o);
-    });
-  });
-}
-populateSelects();
-
-// ── Tab switch ────────────────────────────────────────────────────
-function switchTab(tab) {
-  document.querySelectorAll('.tab').forEach((t,i) =>
-    t.classList.toggle('active',
-      (i===0&&tab==='root')||(i===1&&tab==='child')||(i===2&&tab==='sync')));
-  document.getElementById('rootPanel').classList.toggle('active', tab==='root');
-  document.getElementById('childPanel').classList.toggle('active', tab==='child');
-  document.getElementById('syncPanel').classList.toggle('active', tab==='sync');
-}
+let months = []; // [{year, month}]
+let pending = null; // { root, resultSection }
 
 // ── API key ───────────────────────────────────────────────────────
 function toggleKey() {
@@ -707,523 +255,385 @@ function toggleKey() {
 function updateApiStatus() {
   const key = document.getElementById('apiKey').value.trim();
   const el  = document.getElementById('apiStatus');
-  if (key) {
-    el.textContent = 'Saved ✓'; el.className = 'api-status ok';
-    localStorage.setItem('backlog_api_key', key);
-    loadTesterItems();
-  } else {
-    el.textContent = 'Not saved'; el.className = 'api-status empty';
-    localStorage.removeItem('backlog_api_key');
-  }
+  if (key) { el.textContent = 'Saved ✓'; el.className = 'api-status ok'; localStorage.setItem('backlog_api_key', key); }
+  else { el.textContent = 'Not saved'; el.className = 'api-status empty'; localStorage.removeItem('backlog_api_key'); }
 }
 function clearKey() {
   document.getElementById('apiKey').value = '';
   localStorage.removeItem('backlog_api_key');
-  const el = document.getElementById('apiStatus');
-  el.textContent = 'Not saved'; el.className = 'api-status empty';
+  document.getElementById('apiStatus').textContent = 'Not saved';
+  document.getElementById('apiStatus').className = 'api-status empty';
 }
 (function loadSavedKey() {
   const saved = localStorage.getItem('backlog_api_key');
-  if (saved) { document.getElementById('apiKey').value = saved; updateApiStatus(); loadTesterItems(); }
+  if (saved) { document.getElementById('apiKey').value = saved; updateApiStatus(); }
 })();
+function getApiKey() { return document.getElementById('apiKey').value.trim(); }
 
-// ── Auto-translate (Google Translate free endpoint) ───────────────
-async function autoTranslate(fieldId, indicatorId) {
-  const el  = document.getElementById(fieldId);
-  const ind = document.getElementById(indicatorId);
-  const text = el.value.trim();
-  if (!text) return;
-
-  // Detect if text contains Vietnamese characters
-  const hasVietnamese = /[àáạảãăắặẳẵâấậẩẫèéẹẻẽêếệểễìíịỉĩòóọỏõôốộổỗơớợởỡùúụủũưứựửữỳýỵỷỹđÀÁẠẢÃĂẮẶẲẴÂẤẬẨẪÈÉẸẺẼÊẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỐỘỔỖƠỚỢỞỠÙÚỤỦŨƯỨỰỬỮỲÝỴỶỸĐ]/.test(text);
-  if (!hasVietnamese) return;
-
-  ind.classList.add('show');
-  try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=vi&tl=en&dt=t&q=${encodeURIComponent(text)}`;
-    const res  = await fetch(url);
-    const data = await res.json();
-    const translated = data[0].map(s => s[0]).join('');
-    if (translated && translated !== text) el.value = translated;
-  } catch(e) { /* silently fail — keep original text */ }
-  finally { ind.classList.remove('show'); }
-}
-
-// ── Tags ──────────────────────────────────────────────────────────
-function focusTagInput(id) { document.getElementById(id).focus(); }
-
-function addTag(e, key, inputId) {
-  if (e.key !== 'Enter') return;
-  e.preventDefault();
-  const inp = document.getElementById(inputId);
-  const val = inp.value.trim();
+// ── Month tags ────────────────────────────────────────────────────
+function addMonth() {
+  const val = document.getElementById('monthPicker').value; // "YYYY-MM"
   if (!val) return;
-
-  // Auto-translate tag if Vietnamese
-  const hasVi = /[àáạảãăắặẳẵâấậẩẫèéẹẻẽêếệểễìíịỉĩòóọỏõôốộổỗơớợởỡùúụủũưứựửữỳýỵỷỹđ]/i.test(val);
-  if (hasVi) {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=vi&tl=en&dt=t&q=${encodeURIComponent(val)}`;
-    fetch(url).then(r => r.json()).then(data => {
-      const translated = data[0].map(s => s[0]).join('') || val;
-      tags[key].push(translated);
-      renderTags(key, inputId);
-    }).catch(() => { tags[key].push(val); renderTags(key, inputId); });
-  } else {
-    tags[key].push(val);
-    renderTags(key, inputId);
-  }
-  inp.value = '';
+  const [y, m] = val.split('-').map(Number);
+  if (months.some(x => x.year === y && x.month === m)) { document.getElementById('monthPicker').value = ''; return; }
+  months.push({ year: y, month: m });
+  months.sort((a,b) => (a.year - b.year) || (a.month - b.month));
+  document.getElementById('monthPicker').value = '';
+  renderMonths();
+  resetSyncState();
 }
-
-function removeTag(key, idx, inputId) {
-  tags[key].splice(idx, 1);
-  renderTags(key, inputId);
-}
-
-function renderTags(key, inputId) {
-  const wrapper = document.getElementById(inputId).parentElement;
-  const inp     = document.getElementById(inputId);
-  Array.from(wrapper.querySelectorAll('.tag')).forEach(t => t.remove());
-  tags[key].forEach((t, i) => {
+function removeMonth(idx) { months.splice(idx,1); renderMonths(); resetSyncState(); }
+function renderMonths() {
+  const wrap = document.getElementById('monthTags');
+  const hint = document.getElementById('monthEmptyHint');
+  wrap.innerHTML = '';
+  if (months.length === 0) { wrap.appendChild(hint); return; }
+  months.forEach((mo, i) => {
     const tag = document.createElement('span');
     tag.className = 'tag';
-    tag.innerHTML = `${t}<button onclick="removeTag('${key}',${i},'${inputId}')" title="Remove">×</button>`;
-    wrapper.insertBefore(tag, inp);
+    tag.innerHTML = `${monthLabel(mo.year, mo.month)}<button onclick="removeMonth(${i})" title="Remove">×</button>`;
+    wrap.appendChild(tag);
   });
 }
 
-// ── Preview (rendered Markdown) ───────────────────────────────────
-function togglePreview(previewId, btn) {
-  const box = document.getElementById(previewId);
-  const md  = previewId === 'rootPreview' ? buildRootDesc() : buildChildDesc();
-  box.innerHTML = marked.parse(md);
-  const visible = box.style.display === 'block';
-  box.style.display = visible ? 'none' : 'block';
-  btn.textContent = visible ? 'Preview description ▾' : 'Hide preview ▴';
-}
-
 // ── Helpers ───────────────────────────────────────────────────────
-function memberName(id) {
-  const m = TEAM.find(m => String(m.id) === String(id));
-  return m ? m.name : '—';
+function pad2(n) { return String(n).padStart(2,'0'); }
+function monthLabel(y,m) { return `${MONTH_NAMES[m-1]} ${y}`; }
+function parseMonthLabel(label) {
+  const m = label.trim().match(/^(\w+)\s+(\d{4})$/);
+  if (!m) return null;
+  const idx = MONTH_NAMES.indexOf(m[1]);
+  if (idx === -1) return null;
+  return { year: parseInt(m[2],10), month: idx + 1 };
 }
-function getApiKey() { return document.getElementById('apiKey').value.trim(); }
-function showResult(id, type, html) {
-  const el = document.getElementById(id);
-  el.className = 'result ' + type;
-  el.style.display = 'block';
-  el.innerHTML = html;
+function parseDateUTC(str) { return new Date(str.slice(0,10) + 'T00:00:00Z'); }
+function daysBetween(a,b) { return Math.round((b - a) / 86400000); }
+function maxDate(a,b) { return a > b ? a : b; }
+function minDate(a,b) { return a < b ? a : b; }
+function round1(x) { return Math.round(x * 10) / 10; }
+function fmtHrs(x) { const r = round1(x); return (Number.isInteger(r) ? r : r.toFixed(1)); }
+function toISODate(d) { return d.toISOString().slice(0,10); }
+
+function showStatus(type, html) {
+  const el = document.getElementById('statusResult');
+  el.className = 'result ' + type; el.style.display = 'block'; el.innerHTML = html;
 }
-
-// ── Description builders ──────────────────────────────────────────
-function buildRootDesc() {
-  const requester  = memberName(document.getElementById('r_requester').value);
-  const assignee   = memberName(document.getElementById('r_assignee').value);
-  const reviewer   = memberName(document.getElementById('r_reviewer').value);
-  const tester     = memberName(document.getElementById('r_tester').value);
-  const goal       = document.getElementById('r_goal').value.trim() || '—';
-  const start      = document.getElementById('r_start').value || '—';
-  const due        = document.getElementById('r_due').value || '—';
-  const milestoneId = document.getElementById('r_milestone').value.trim();
-  const milestoneLink = milestoneId
-    ? `[View milestone](${BACKLOG_HOST}/find/${PROJECT_KEY}?condition.fixedVersionId=${milestoneId})`
-    : '—';
-  const inScope  = tags.inScope.length  ? tags.inScope.map(t  => `- ${t}`).join('\n') : '- —';
-  const outScope = tags.outScope.length ? tags.outScope.map(t => `- ${t}`).join('\n') : '- —';
-
-  return `## 1. Requester
-
-| Field | Detail |
-|-------|--------|
-| Requested by | ${requester} |
-| Assigned to | ${assignee} |
-
----
-
-## 2. Goal
-
-${goal}
-
----
-
-## 3. Scope
-
-**In scope:**
-${inScope}
-
-**Out of scope:**
-${outScope}
-
----
-
-## 4. Acceptance Criteria
-
-- All pages successfully migrated to Webpack with no regression
-- Unit tests written and passing for all migrated pages
-- Code reviewed and merged
-- No critical or major bugs
-
----
-
-## 5. Timeline
-
-| Field | Date |
-|-------|------|
-| Start | ${start} |
-| Due | ${due} |
-| Milestone | ${milestoneLink} |
-
----
-
-## 6. Responsibilities
-
-| Role | Name |
-|------|------|
-| Owner | ${requester} |
-| Developer | ${assignee} |
-| Reviewer | ${reviewer} |
-| Tester | ${tester} |
-
----
-
-## 7. Child PBIs
-
-| # | Key | Summary | Status |
-|---|-----|---------|--------|
-| 1 | — | — | — |
-
----
-
-## 8. Evidence & Results
-
-| PBI | Evidence | Status |
-|-----|----------|--------|
-| — | — | Pending |`;
+function hideStatus() { document.getElementById('statusResult').style.display = 'none'; }
+function resetSyncState() {
+  pending = null;
+  document.getElementById('updateBtn').disabled = true;
+  document.getElementById('previewWrap').style.display = 'none';
+  document.getElementById('warnBox').style.display = 'none';
+  document.getElementById('scopeWrap').style.display = 'none';
+  hideStatus();
 }
-
-function buildChildDesc() {
-  const assignee  = memberName(document.getElementById('c_assignee').value);
-  const reviewer  = memberName(document.getElementById('c_reviewer').value);
-  const tester    = memberName(document.getElementById('c_tester').value);
-  const bg        = document.getElementById('c_background').value.trim() || '—';
-  const goal      = document.getElementById('c_goal').value.trim() || '—';
-  const start     = document.getElementById('c_start').value || '—';
-  const due       = document.getElementById('c_due').value || '—';
-  const est       = document.getElementById('c_est').value.trim() || '—';
-  const sp        = document.getElementById('c_sp').value || '—';
-  const parent    = document.getElementById('c_parent').value.trim() || '—';
-  const inScope  = tags.c_inScope.length ? tags.c_inScope.map(t => `- ${t}`).join('\n') : '- —';
-  const outScope = tags.c_outScope.length ? tags.c_outScope.map(t => `- ${t}`).join('\n') : '- —';
-  const ac       = tags.c_ac.length ? tags.c_ac.map((t,i) => `- **AC${i+1}:** ${t}`).join('\n') : '- —';
-
-  return `## Summary
-
-${bg}
-
----
-
-## Goal
-
-${goal}
-
----
-
-## Scope
-
-**In scope:**
-${inScope}
-
-**Out of scope:**
-${outScope}
-
----
-
-## Acceptance Criteria
-
-${ac}
-
----
-
-## Story Points
-
-Selected: **${sp}**
-
----
-
-## Timeline & Team
-
-| Field | Detail |
-|-------|--------|
-| Developer | ${assignee} |
-| Reviewer | ${reviewer} |
-| Tester | ${tester} |
-| Start | ${start} |
-| Due | ${due} |
-| Est. hours | ${est}h |
-
----
-
-## Dependencies
-
-- Parent PBI: ${parent}
-
----
-
-## Definition of Done
-
-- [ ] All acceptance criteria met
-- [ ] Code reviewed and merged
-- [ ] Tests passing with no regression
-- [ ] No critical or major bugs
-
----
-
-## Evidence After Release
-
-- Test evidence:
-- Screenshots:
-- Release notes:`;
-}
+document.getElementById('rootKey').addEventListener('input', resetSyncState);
 
 // ── Backlog API ───────────────────────────────────────────────────
-async function submitRoot() {
-  const key        = getApiKey();
-  const summary    = document.getElementById('r_summary').value.trim();
-  const assigneeId = document.getElementById('r_assignee').value;
-  const milestoneId = document.getElementById('r_milestone').value.trim();
-  if (!key)        return showResult('rootResult','error','⚠️ Please enter your Backlog API key.');
-  if (!summary)    return showResult('rootResult','error','⚠️ Summary is required.');
-  if (!assigneeId) return showResult('rootResult','error','⚠️ Please select an assignee.');
-
-  const btn = document.querySelector('#rootPanel .btn-submit');
-  btn.disabled = true; btn.textContent = 'Creating...';
-
-  const p = new URLSearchParams();
-  p.append('projectId', PROJECT_ID);
-  p.append('summary', summary);
-  p.append('issueTypeId', ISSUE_TYPE_PBI);
-  p.append('priorityId', PRIORITY_ID);
-  p.append('description', buildRootDesc());
-  p.append('assigneeId', assigneeId);
-  p.append('categoryId[]', CATEGORY_ID);
-  if (milestoneId) p.append('milestoneId[]', milestoneId);
-  const testerId = document.getElementById('r_tester').value;
-  const testerItemId = testerId ? getTesterItemId(testerId) : null;
-  if (testerItemId) p.append(`customField_${TESTER_FIELD_ID}`, testerItemId);
-  const s = document.getElementById('r_start').value;
-  const d = document.getElementById('r_due').value;
-  if (s) p.append('startDate', s);
-  if (d) p.append('dueDate', d);
-
-  try {
-    const res  = await fetch(`${BACKLOG_HOST}/api/v2/issues?apiKey=${key}`, {
-      method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString()
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.errors?.[0]?.message || `HTTP ${res.status}`);
-    const url = `${BACKLOG_HOST}/view/${data.issueKey}`;
-    showResult('rootResult','success',`✅ <strong>Root PBI created!</strong><br><a href="${url}" target="_blank">${data.issueKey} — ${data.summary}</a>`);
-  } catch(e) {
-    showResult('rootResult','error',`❌ <strong>Error:</strong> ${e.message}`);
-  } finally {
-    btn.disabled = false; btn.textContent = 'Create Root PBI →';
-  }
-}
-
-async function submitChild() {
-  const key        = getApiKey();
-  const summary    = document.getElementById('c_summary').value.trim();
-  const parentKey  = document.getElementById('c_parent').value.trim();
-  const assigneeId = document.getElementById('c_assignee').value;
-  const milestoneId = document.getElementById('c_milestone').value.trim();
-  const testerId   = document.getElementById('c_tester').value;
-  if (!key)        return showResult('childResult','error','⚠️ Please enter your Backlog API key.');
-  if (!summary)    return showResult('childResult','error','⚠️ Summary is required.');
-  if (!assigneeId) return showResult('childResult','error','⚠️ Please select an assignee.');
-
-  const btn = document.querySelector('#childPanel .btn-submit');
-  btn.disabled = true; btn.textContent = 'Creating...';
-
-  let parentIssueId = null;
-  if (parentKey) {
-    try {
-      const pr   = await fetch(`${BACKLOG_HOST}/api/v2/issues/${parentKey}?apiKey=${key}`);
-      const pd   = await pr.json();
-      if (pr.ok) parentIssueId = pd.id;
-    } catch(e) {}
-  }
-
-  const p = new URLSearchParams();
-  p.append('projectId', PROJECT_ID);
-  p.append('summary', summary);
-  p.append('issueTypeId', ISSUE_TYPE_PBI);
-  p.append('priorityId', PRIORITY_ID);
-  p.append('description', buildChildDesc());
-  p.append('assigneeId', assigneeId);
-  p.append('categoryId[]', CATEGORY_ID);
-  if (milestoneId)    p.append('milestoneId[]', milestoneId);
-  if (parentIssueId)  p.append('parentIssueId', parentIssueId);
-  const testerItemId2 = testerId ? getTesterItemId(testerId) : null;
-  if (testerItemId2)   p.append(`customField_${TESTER_FIELD_ID}`, testerItemId2);
-  const s = document.getElementById('c_start').value;
-  const d = document.getElementById('c_due').value;
-  const e = document.getElementById('c_est').value.trim();
-  if (s) p.append('startDate', s);
-  if (d) p.append('dueDate', d);
-  if (e) p.append('estimatedHours', e);
-
-  try {
-    const res  = await fetch(`${BACKLOG_HOST}/api/v2/issues?apiKey=${key}`, {
-      method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: p.toString()
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.errors?.[0]?.message || `HTTP ${res.status}`);
-    const url = `${BACKLOG_HOST}/view/${data.issueKey}`;
-    showResult('childResult','success',`✅ <strong>Child PBI created!</strong><br><a href="${url}" target="_blank">${data.issueKey} — ${data.summary}</a>`);
-  } catch(e) {
-    showResult('childResult','error',`❌ <strong>Error:</strong> ${e.message}`);
-  } finally {
-    btn.disabled = false; btn.textContent = 'Create Child PBI →';
-  }
-}
-
-// ── Sync Root ─────────────────────────────────────────────────────
-let syncedIssues = [];
-let syncRootData = null;
-
-const STATUS_EMOJI = {
-  'Open': '🔵 Open',
-  'In Progress': '🟡 In Progress',
-  'Resolved': '🟢 Resolved',
-  'Closed': '✅ Closed',
-};
-
-async function previewSync() {
-  const key        = getApiKey();
-  const rootKey    = document.getElementById('s_rootKey').value.trim();
-  const milestoneId = document.getElementById('s_milestoneId').value.trim();
-  if (!key)         return showResult('syncResult','error','⚠️ Please enter your Backlog API key.');
-  if (!rootKey)     return showResult('syncResult','error','⚠️ Please enter the Root PBI key.');
-  if (!milestoneId) return showResult('syncResult','error','⚠️ Please enter the Milestone ID.');
-
-  document.getElementById('syncResult').style.display = 'none';
-  document.getElementById('syncPreviewWrap').style.display = 'none';
-  document.getElementById('syncBtn').disabled = true;
-
-  const previewBtn = document.querySelector('#syncPanel .btn-submit');
-
-  try {
-    // Fetch root PBI
-    const rootRes = await fetch(`${BACKLOG_HOST}/api/v2/issues/${rootKey}?apiKey=${key}`);
-    if (!rootRes.ok) throw new Error(`Root PBI not found: ${rootKey}`);
-    syncRootData = await rootRes.json();
-
-    // Fetch all PBIs in milestone (max 100)
-    const issuesRes = await fetch(
-      `${BACKLOG_HOST}/api/v2/issues?apiKey=${key}&projectId[]=${PROJECT_ID}&milestoneId[]=${milestoneId}&issueTypeId[]=${ISSUE_TYPE_PBI}&count=100`
-    );
-    if (!issuesRes.ok) throw new Error('Failed to fetch milestone issues');
-    const allIssues = await issuesRes.json();
-
-    // Filter out root PBI itself
-    syncedIssues = allIssues.filter(i => i.issueKey !== rootKey);
-
-    if (syncedIssues.length === 0) {
-      return showResult('syncResult','error','⚠️ No child PBIs found in this milestone.');
-    }
-
-    // Render preview table
-    const rows = syncedIssues.map((issue, idx) => {
-      const status   = issue.status?.name || '—';
-      const assignee = issue.assignee?.name || '—';
-      const est      = issue.estimatedHours != null ? issue.estimatedHours + 'h' : '—';
-      const act      = issue.actualHours    != null ? issue.actualHours    + 'h' : '—';
-      const emoji    = STATUS_EMOJI[status] || status;
-      return `<tr>
-        <td style="white-space:nowrap; color:var(--accent); font-weight:600;">${issue.issueKey}</td>
-        <td style="max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${issue.summary}</td>
-        <td style="white-space:nowrap;">${assignee}</td>
-        <td style="white-space:nowrap;">${emoji}</td>
-        <td style="text-align:right;">${est}</td>
-        <td style="text-align:right;">${act}</td>
-      </tr>`;
-    }).join('');
-
-    document.getElementById('syncTable').innerHTML = `
-      <table style="width:100%; border-collapse:collapse; font-size:12px;">
-        <thead>
-          <tr style="background:var(--bg);">
-            <th style="padding:6px 8px; text-align:left; border:1px solid var(--border); color:var(--muted);">Key</th>
-            <th style="padding:6px 8px; text-align:left; border:1px solid var(--border); color:var(--muted);">Summary</th>
-            <th style="padding:6px 8px; text-align:left; border:1px solid var(--border); color:var(--muted);">Assignee</th>
-            <th style="padding:6px 8px; text-align:left; border:1px solid var(--border); color:var(--muted);">Status</th>
-            <th style="padding:6px 8px; text-align:right; border:1px solid var(--border); color:var(--muted);">Est.</th>
-            <th style="padding:6px 8px; text-align:right; border:1px solid var(--border); color:var(--muted);">Act.</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    `;
-    document.getElementById('syncPreviewWrap').style.display = 'block';
-    document.getElementById('syncBtn').disabled = false;
-
-  } catch(e) {
-    showResult('syncResult','error',`❌ ${e.message}`);
-  }
-}
-
-async function doSync() {
-  if (!syncedIssues.length || !syncRootData) return;
+async function backlogGet(path, params) {
   const key = getApiKey();
-  const btn = document.getElementById('syncBtn');
-  btn.disabled = true; btn.textContent = 'Syncing...';
+  const url = new URL(BACKLOG_HOST + path);
+  url.searchParams.set('apiKey', key);
+  for (const [k, v] of Object.entries(params || {})) {
+    if (v === undefined || v === null) continue;
+    if (Array.isArray(v)) v.forEach(x => url.searchParams.append(k + '[]', x));
+    else url.searchParams.append(k, v);
+  }
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try { const d = await res.json(); if (d.errors?.[0]?.message) msg = d.errors[0].message; } catch(e) {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
 
-  try {
-    // Build new Child PBIs table
-    const tableRows = syncedIssues.map((issue, idx) => {
-      const status   = issue.status?.name || '—';
-      const assignee = issue.assignee?.name || '—';
-      const est      = issue.estimatedHours != null ? issue.estimatedHours + 'h' : '—';
-      const act      = issue.actualHours    != null ? issue.actualHours    + 'h' : '—';
-      const url      = `${BACKLOG_HOST}/view/${issue.issueKey}`;
-      return `| ${idx+1} | [${issue.issueKey}](${url}) | ${issue.summary} | ${assignee} | ${status} | ${est} | ${act} |`;
-    }).join('\n');
+async function backlogPatch(path, formParams) {
+  const key = getApiKey();
+  const p = new URLSearchParams();
+  for (const [k,v] of Object.entries(formParams)) p.append(k, v);
+  const res = await fetch(`${BACKLOG_HOST}${path}?apiKey=${key}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: p.toString()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.errors?.[0]?.message || `HTTP ${res.status}`);
+  return data;
+}
 
-    const newTable = `## 7. Child PBIs
+async function fetchAllIssues(milestoneId, extraParams) {
+  let all = [];
+  let offset = 0;
+  while (true) {
+    const batch = await backlogGet('/api/v2/issues', {
+      projectId: [PROJECT_ID],
+      milestoneId: [milestoneId],
+      count: 100,
+      sort: 'created',
+      order: 'asc',
+      offset,
+      ...extraParams
+    });
+    all = all.concat(batch);
+    if (batch.length < 100) break;
+    offset += 100;
+  }
+  return all;
+}
 
-| # | Key | Summary | Assignee | Status | Est. | Act. |
-|---|-----|---------|----------|--------|------|------|
-${tableRows}`;
+// ── Core calculation for one month ─────────────────────────────────
+async function calcMonth(milestoneId, year, month) {
+  const monthStart = `${year}-${pad2(month)}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const monthEnd = `${year}-${pad2(month)}-${pad2(lastDay)}`;
 
-    // Replace section 7 in existing description
-    let desc = syncRootData.description || '';
-    const section7Regex = /## 7\. Child PBIs[\s\S]*?(?=\n## 8\.|$)/;
-    if (section7Regex.test(desc)) {
-      desc = desc.replace(section7Regex, newTable + '\n\n');
-    } else {
-      desc = desc + '\n\n' + newTable;
+  const [setA, setB, setC] = await Promise.all([
+    fetchAllIssues(milestoneId, { startDateSince: monthStart, startDateUntil: monthEnd }),
+    fetchAllIssues(milestoneId, { dueDateSince: monthStart, dueDateUntil: monthEnd }),
+    fetchAllIssues(milestoneId, { startDateUntil: monthStart, dueDateSince: monthEnd })
+  ]);
+
+  const map = new Map();
+  [...setA, ...setB, ...setC].forEach(i => map.set(i.id, i));
+  const merged = Array.from(map.values()).filter(i => !(i.summary || '').includes('[ROOT]'));
+
+  const warnings = [];
+  const groups = {}; // type -> {est, act, count}
+  let estMonth = 0, actMonth = 0, childCount = 0, subCount = 0;
+
+  for (const issue of merged) {
+    const isSubtask = issue.parentIssueId != null;
+    let est = issue.estimatedHours;
+    let act = issue.actualHours;
+    if (typeof est === 'undefined' || typeof act === 'undefined') {
+      const full = await backlogGet(`/api/v2/issues/${issue.id}`, {});
+      est = full.estimatedHours; act = full.actualHours;
     }
 
-    // Patch root PBI
-    const params = new URLSearchParams();
-    params.append('description', desc);
-    const res = await fetch(`${BACKLOG_HOST}/api/v2/issues/${syncRootData.issueKey}?apiKey=${key}`, {
-      method: 'PATCH',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: params.toString()
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.errors?.[0]?.message || `HTTP ${res.status}`);
+    if (!isSubtask && (!issue.startDate || !issue.dueDate)) {
+      warnings.push(`${issue.issueKey} (${issue.summary}): missing startDate or dueDate → excluded from calculation`);
+      continue;
+    }
 
-    const url = `${BACKLOG_HOST}/view/${syncRootData.issueKey}`;
-    showResult('syncResult','success',
-      `✅ <strong>Synced successfully!</strong> Updated ${syncedIssues.length} child PBI(s) in <a href="${url}" target="_blank">${syncRootData.issueKey}</a>`);
-  } catch(e) {
-    showResult('syncResult','error',`❌ ${e.message}`);
+    let estContrib, actContrib;
+    if (isSubtask) {
+      estContrib = est ?? 0;
+      if (act == null) { warnings.push(`${issue.issueKey} (${issue.summary}): actualHours = null → counted as 0h`); act = 0; }
+      actContrib = act;
+    } else {
+      const sD = parseDateUTC(issue.startDate);
+      const dD = parseDateUTC(issue.dueDate);
+      const totalDays = daysBetween(sD, dD) + 1;
+      const overlapStart = maxDate(sD, parseDateUTC(monthStart));
+      const overlapEnd = minDate(dD, parseDateUTC(monthEnd));
+      const overlapDays = daysBetween(overlapStart, overlapEnd) + 1;
+      const ratio = totalDays > 0 ? overlapDays / totalDays : 0;
+      const e = est ?? 0;
+      let a = act;
+      if (a == null) { warnings.push(`${issue.issueKey} (${issue.summary}): actualHours = null → counted as 0h`); a = 0; }
+      estContrib = round1(e * ratio);
+      actContrib = round1(a * ratio);
+    }
+
+    const key = isSubtask ? (issue.issueType?.name || 'Subtask') : 'Others (Child PBIs)';
+    if (!groups[key]) groups[key] = { est: 0, act: 0, count: 0 };
+    groups[key].est += estContrib;
+    groups[key].act += actContrib;
+    groups[key].count += 1;
+    estMonth += estContrib;
+    actMonth += actContrib;
+    if (isSubtask) subCount++; else childCount++;
+  }
+
+  if (actMonth === 0 && merged.length > 0) {
+    warnings.push(`All actual hours are 0 for ${monthLabel(year, month)} — please verify hours have been logged`);
+  }
+
+  return {
+    year, month, estMonth: round1(estMonth), actMonth: round1(actMonth),
+    groups, warnings, childCount, subCount, issueCount: merged.length
+  };
+}
+
+function buildBreakdownBlock(mr) {
+  const label = monthLabel(mr.year, mr.month);
+  const entries = Object.entries(mr.groups);
+  const others = entries.filter(([k]) => k === 'Others (Child PBIs)');
+  const rest = entries.filter(([k]) => k !== 'Others (Child PBIs)');
+  const ordered = [...rest, ...others];
+  let rows = '';
+  for (const [type, g] of ordered) {
+    const pct = mr.actMonth > 0 ? Math.round((g.act / mr.actMonth) * 100) : 0;
+    rows += `| ${type} | ${fmtHrs(g.est)}h | ${fmtHrs(g.act)}h | ${pct}% |\n`;
+  }
+  rows += `| **TOTAL** | **${fmtHrs(mr.estMonth)}h** | **${fmtHrs(mr.actMonth)}h** | **100%** |`;
+  return `### Hours breakdown — ${label}\n\n| Type | Est | Act | Act % |\n|---|---|---|---|\n${rows}`;
+}
+
+function parseExistingBlocks(description) {
+  const blocks = [];
+  const regex = /### Hours breakdown — ([^\n]+)\n\n([\s\S]*?)(?=\n### Hours breakdown — |\n## |$)/g;
+  let m;
+  while ((m = regex.exec(description)) !== null) {
+    const label = m[1].trim();
+    const body = m[2].trim();
+    const totalMatch = body.match(/\*\*TOTAL\*\*\s*\|\s*\*\*([\d.]+)h\*\*\s*\|\s*\*\*([\d.]+)h\*\*/);
+    const est = totalMatch ? parseFloat(totalMatch[1]) : 0;
+    const act = totalMatch ? parseFloat(totalMatch[2]) : 0;
+    const parsed = parseMonthLabel(label);
+    blocks.push({
+      label, year: parsed?.year, month: parsed?.month, est, act,
+      raw: `### Hours breakdown — ${label}\n\n${body}`
+    });
+  }
+  return blocks;
+}
+
+// ── Main sync flow ──────────────────────────────────────────────────
+async function runSync() {
+  const key = getApiKey();
+  const rootKey = document.getElementById('rootKey').value.trim();
+  if (!key) return showStatus('error', '⚠️ Vui lòng nhập Backlog API key.');
+  if (!rootKey) return showStatus('error', '⚠️ Vui lòng nhập Root PBI key.');
+  if (months.length === 0) return showStatus('error', '⚠️ Vui lòng chọn ít nhất 1 tháng cần sync.');
+
+  resetSyncState();
+  const btn = document.getElementById('fetchBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner-inline"></span>Đang fetch & tính toán...';
+
+  try {
+    const root = await backlogGet(`/api/v2/issues/${rootKey}`, {});
+    if (!(root.summary || '').includes('[ROOT]')) {
+      throw new Error(`"${rootKey}" không phải Root PBI (summary không chứa "[ROOT]").`);
+    }
+    if (!root.milestone || root.milestone.length === 0) {
+      throw new Error(`Root PBI ${rootKey} chưa gắn milestone.`);
+    }
+    const milestoneId = root.milestone[0].id;
+    const milestoneName = root.milestone[0].name;
+    const plannedDue = root.dueDate ? root.dueDate.slice(0,10) : null;
+
+    const monthResults = [];
+    const scopeLines = [];
+    for (const mo of months) {
+      const mr = await calcMonth(milestoneId, mo.year, mo.month);
+      monthResults.push(mr);
+      scopeLines.push(`<b>${monthLabel(mo.year, mo.month)}</b>: ${mr.issueCount} issues (Child PBIs: ${mr.childCount}, Subtasks: ${mr.subCount})`);
+    }
+
+    // All issues in the whole milestone (for completion-date check), no date filter
+    const allMilestoneIssues = await fetchAllIssues(milestoneId, {});
+    const childPBIs = allMilestoneIssues.filter(i => i.parentIssueId == null && !(i.summary || '').includes('[ROOT]'));
+
+    let completionDate, scheduleVariance;
+    const notClosed = childPBIs.find(i => (i.status?.name) !== 'Closed');
+    if (childPBIs.length > 0 && !notClosed) {
+      const dates = childPBIs.map(i => i.resolutionDate).filter(Boolean).map(d => d.slice(0,10)).sort();
+      completionDate = dates.length ? dates[dates.length - 1] : 'N/A';
+      if (plannedDue && completionDate !== 'N/A') {
+        const diff = daysBetween(parseDateUTC(completionDate), parseDateUTC(plannedDue)); // planned - completion
+        scheduleVariance = diff >= 0
+          ? `+${diff} days ✅ Early`
+          : `-${Math.abs(diff)} days ⚠️ Late`;
+      } else {
+        scheduleVariance = '⚠️ TBD';
+      }
+    } else if (notClosed) {
+      completionDate = `In progress (${notClosed.issueKey} — ${notClosed.summary} not yet Closed)`;
+      scheduleVariance = '⚠️ TBD';
+    } else {
+      completionDate = 'N/A';
+      scheduleVariance = '⚠️ TBD';
+    }
+
+    // Merge with existing breakdown blocks in the description
+    const existingBlocks = parseExistingBlocks(root.description || '');
+    const blockMap = new Map(existingBlocks.filter(b => b.year && b.month).map(b => [`${b.year}-${b.month}`, b]));
+    for (const mr of monthResults) {
+      blockMap.set(`${mr.year}-${mr.month}`, {
+        label: monthLabel(mr.year, mr.month), year: mr.year, month: mr.month,
+        est: mr.estMonth, act: mr.actMonth, raw: buildBreakdownBlock(mr)
+      });
+    }
+    const allBlocks = Array.from(blockMap.values()).sort((a,b) => (a.year - b.year) || (a.month - b.month));
+
+    const grandTotalEst = round1(allBlocks.reduce((s,b) => s + b.est, 0));
+    const grandTotalAct = round1(allBlocks.reduce((s,b) => s + b.act, 0));
+    const hourVariance = round1(grandTotalAct - grandTotalEst);
+    const hourVariancePct = grandTotalEst > 0 ? Math.round((hourVariance / grandTotalEst) * 100) : 0;
+    const flag = Math.abs(hourVariancePct) <= 10 ? '✅' : '⚠️';
+    const varSign = hourVariance >= 0 ? '+' : '';
+    const pctSign = hourVariancePct >= 0 ? '+' : '';
+
+    const resultSection =
+`## Result
+
+| | Planned | Actual |
+|---|---|---|
+| Completion date | ${plannedDue || '—'} | ${completionDate} |
+| Schedule variance | — | ${scheduleVariance} |
+| Total hours (all months) | ${fmtHrs(grandTotalEst)}h | ${fmtHrs(grandTotalAct)}h |
+| Hour variance | — | ${varSign}${fmtHrs(hourVariance)}h (${pctSign}${hourVariancePct}%) ${flag} |
+
+${allBlocks.map(b => b.raw).join('\n\n')}`;
+
+    // Warnings across all months + note for months with no issues in scope
+    const allWarnings = [];
+    monthResults.forEach(mr => {
+      if (mr.issueCount === 0) allWarnings.push(`${monthLabel(mr.year, mr.month)}: no issues in scope for this month — breakdown block skipped.`);
+      allWarnings.push(...mr.warnings);
+    });
+
+    pending = { root, resultSection, milestoneName };
+
+    // Render UI
+    document.getElementById('scopeLine').innerHTML =
+      `Root: <b>${root.summary}</b> (${root.issueKey})<br>Milestone: <b>${milestoneName}</b><br>` + scopeLines.join('<br>');
+    document.getElementById('scopeWrap').style.display = 'block';
+
+    if (allWarnings.length > 0) {
+      document.getElementById('warnList').innerHTML = allWarnings.map(w => `<li>${w}</li>`).join('');
+      document.getElementById('warnBox').style.display = 'block';
+    }
+
+    document.getElementById('resultPreview').innerHTML = marked.parse(resultSection);
+    document.getElementById('resultPreview').style.display = 'block';
+    document.getElementById('previewWrap').style.display = 'block';
+
+    showStatus('info', 'Đã tính toán xong. Kiểm tra preview rồi bấm "Cập nhật lên Backlog" nếu ổn.');
+    document.getElementById('updateBtn').disabled = false;
+
+  } catch (e) {
+    showStatus('error', `❌ <strong>Lỗi:</strong> ${e.message}`);
   } finally {
-    btn.disabled = false; btn.textContent = 'Sync to Backlog →';
+    btn.disabled = false; btn.textContent = '1) Fetch & Tính toán';
   }
 }
+
+async function doUpdate() {
+  if (!pending) return;
+  const btn = document.getElementById('updateBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner-inline"></span>Đang cập nhật...';
+
+  try {
+    let desc = pending.root.description || '';
+    if (/## Result/.test(desc)) {
+      desc = desc.replace(/## Result[\s\S]*$/, pending.resultSection);
+    } else {
+      desc = desc.replace(/\s+$/, '') + '\n\n---\n\n' + pending.resultSection;
+    }
+    await backlogPatch(`/api/v2/issues/${pending.root.issueKey}`, { description: desc });
+    const url = `${BACKLOG_HOST}/view/${pending.root.issueKey}`;
+    showStatus('success', `✅ <strong>Đã sync result!</strong><br><a href="${url}" target="_blank">${pending.root.issueKey} — ${pending.root.summary}</a>`);
+  } catch (e) {
+    showStatus('error', `❌ <strong>Lỗi khi cập nhật:</strong> ${e.message}`);
+  } finally {
+    btn.disabled = false; btn.textContent = '2) Cập nhật lên Backlog →';
+  }
+}
+
+renderMonths();
 </script>
 </body>
 </html>
