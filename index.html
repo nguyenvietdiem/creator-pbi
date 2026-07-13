@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sync Result — DEV_MIERUCA_HEAT_OPT</title>
+  <title>Backlog Tools — DEV_MIERUCA_HEAT_OPT</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -52,7 +52,7 @@
 
     .container { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
 
-    .card { background: var(--surface); border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow); }
+    .card { background: var(--surface); border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow); overflow: hidden; }
 
     .api-card { background: var(--surface); border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow); padding: 1.1rem 1.25rem; }
     .api-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; }
@@ -62,6 +62,19 @@
     .api-status.empty { background: var(--surface-2); color: var(--faint); border: 1px solid var(--border); }
     .input-row { display: flex; gap: 6px; }
     .api-hint { font-size: 11px; color: var(--faint); margin-top: 5px; }
+
+    /* ── Tabs ── */
+    .tabs { display: grid; grid-template-columns: 1fr 1fr 1fr; border-bottom: 1px solid var(--border); }
+    .tab {
+      padding: 0.85rem 0.4rem; font-size: 12px; font-weight: 700; text-align: center; cursor: pointer;
+      color: var(--muted); border: none; background: var(--surface-2); transition: color 0.15s, background 0.15s;
+      letter-spacing: -0.1px;
+    }
+    .tab.active { color: var(--accent); background: var(--surface); box-shadow: inset 0 -2px 0 var(--accent); }
+    .tab:hover:not(.active) { background: #f3f3f0; color: var(--text); }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
 
     .panel-head {
       padding: 1.1rem 1.5rem;
@@ -83,12 +96,13 @@
     label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); display: flex; align-items: center; gap: 3px; }
     label .req { color: #e05; }
 
-    input[type="text"], input[type="month"], input[type="password"] {
+    input[type="text"], input[type="month"], input[type="password"], select {
       width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 11px;
       font-size: 13px; color: var(--text); background: var(--surface-2); outline: none; font-family: inherit;
       height: 36px; transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
     }
-    input:focus { border-color: var(--border-focus); background: var(--surface); box-shadow: 0 0 0 3px rgba(91,91,214,0.1); }
+    input:focus, select:focus { border-color: var(--border-focus); background: var(--surface); box-shadow: 0 0 0 3px rgba(91,91,214,0.1); }
+    select { cursor: pointer; }
 
     .icon-btn {
       height: 36px; min-width: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -156,6 +170,15 @@
     .preview-box th { background: var(--bg); font-weight: 600; color: var(--muted); }
     .preview-box strong { font-weight: 700; }
 
+    .checkbox-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .checkbox-chip {
+      display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 500;
+      background: var(--tag-bg); color: var(--tag-text); border: 1px solid #d0d0f8; border-radius: 20px;
+      padding: 6px 11px 6px 9px; cursor: pointer; user-select: none; transition: opacity 0.15s;
+    }
+    .checkbox-chip input { margin: 0; accent-color: var(--accent); }
+    .checkbox-chip.unchecked { opacity: 0.45; background: var(--surface-2); color: var(--muted); border-color: var(--border); text-decoration: line-through; }
+
     .spinner-inline { display: inline-block; width: 11px; height: 11px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: -1px; margin-right: 5px; }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
@@ -163,7 +186,7 @@
 <body>
 
 <div class="page-header">
-  <h1>Sync Result</h1>
+  <h1>Backlog Tools</h1>
   <p>DEV_MIERUCA_HEAT_OPT · faber-wi.backlog.jp</p>
 </div>
 
@@ -183,63 +206,143 @@
     <p class="api-hint">Saved automatically in your browser — no need to re-enter next time.</p>
   </div>
 
-  <!-- Sync card -->
+  <!-- Main card -->
   <div class="card">
-    <div class="panel-head">
-      <h2>🔄 Sync Result cho Root PBI</h2>
-      <p>Tính lại Est/Act hours theo tháng (có prorate cho Child PBI, cộng dồn cho Subtask) trong phạm vi <b>milestone dự án</b> của Root — không phải milestone tháng — rồi cập nhật mục <code>## Result</code> lên Backlog. Không đụng tới các phần khác của description.</p>
+    <div class="tabs">
+      <button class="tab active" data-tab="sync" onclick="switchTab('sync')">🔄 Sync Result</button>
+      <button class="tab" data-tab="personal" onclick="switchTab('personal')">👤 Personal Hours</button>
+      <button class="tab" data-tab="team" onclick="switchTab('team')">👥 Team Hours</button>
     </div>
 
-    <div class="form-body">
-
-      <div class="field">
-        <label>Root PBI key <span class="req">*</span></label>
-        <input type="text" id="rootKey" placeholder="DEV_MIERUCA_HEAT_OPT-7715" />
+    <!-- SYNC RESULT -->
+    <div id="syncPanel" class="panel active">
+      <div class="panel-head">
+        <h2>🔄 Sync Result cho Root PBI</h2>
+        <p>Tính lại Est/Act hours theo tháng (có prorate cho Child PBI, cộng dồn cho Subtask) trong phạm vi <b>milestone dự án</b> của Root — không phải milestone tháng — rồi cập nhật mục <code>## Result</code> lên Backlog. Không đụng tới các phần khác của description.</p>
       </div>
 
-      <div class="field">
-        <label>Milestone dự án (tùy chọn)</label>
-        <input type="text" id="milestoneOverride" placeholder="Để trống = tự nhận diện. VD: 523565" />
-        <span class="hint-text">Root thường có 2 milestone: 1 milestone tháng (VD "2026-Jul", dùng cho Hours Report) và 1 milestone dự án (VD "Refactor optimizer"). Tool tự chọn milestone không phải dạng tháng — nếu chọn sai hoặc Root có nhiều milestone dự án, nhập ID đúng vào đây (lấy từ URL <code>condition.fixedVersionId=</code>).</span>
-      </div>
+      <div class="form-body">
 
-      <div class="field">
-        <label>Tháng cần sync <span class="req">*</span></label>
-        <div class="input-row">
-          <input type="month" id="monthPicker" />
-          <button class="icon-btn" onclick="addMonth()">+ Thêm tháng</button>
+        <div class="field">
+          <label>Root PBI key <span class="req">*</span></label>
+          <input type="text" id="rootKey" placeholder="DEV_MIERUCA_HEAT_OPT-7715" />
         </div>
-        <div class="tags-wrapper" id="monthTags">
-          <span class="tag-empty" id="monthEmptyHint">Chưa chọn tháng nào</span>
+
+        <div class="field">
+          <label>Milestone dự án (tùy chọn)</label>
+          <input type="text" id="milestoneOverride" placeholder="Để trống = tự nhận diện. VD: 523565" />
+          <span class="hint-text">Root thường có 2 milestone: 1 milestone tháng (VD "2026-Jul", dùng cho Hours Report) và 1 milestone dự án (VD "Refactor optimizer"). Tool tự chọn milestone không phải dạng tháng — nếu chọn sai hoặc Root có nhiều milestone dự án, nhập ID đúng vào đây (lấy từ URL <code>condition.fixedVersionId=</code>).</span>
         </div>
-        <span class="hint-text">Có thể thêm nhiều tháng — mỗi tháng sẽ có 1 bảng breakdown riêng, xếp cũ → mới.</span>
+
+        <div class="field">
+          <label>Tháng cần sync <span class="req">*</span></label>
+          <div class="input-row">
+            <input type="month" id="monthPicker" />
+            <button class="icon-btn" onclick="addMonth()">+ Thêm tháng</button>
+          </div>
+          <div class="tags-wrapper" id="monthTags">
+            <span class="tag-empty" id="monthEmptyHint">Chưa chọn tháng nào</span>
+          </div>
+          <span class="hint-text">Có thể thêm nhiều tháng — mỗi tháng sẽ có 1 bảng breakdown riêng, xếp cũ → mới.</span>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="btn-row">
+          <button class="btn-submit btn-secondary" id="fetchBtn" onclick="runSync()">1) Fetch &amp; Tính toán</button>
+          <button class="btn-submit" id="updateBtn" onclick="doUpdate()" disabled>2) Cập nhật lên Backlog →</button>
+        </div>
+
+        <div class="result" id="statusResult"></div>
+
+        <div id="scopeWrap" style="display:none;">
+          <div class="section-label">Phạm vi đã fetch</div>
+          <div class="scope-line" id="scopeLine"></div>
+        </div>
+
+        <div class="warn-box" id="warnBox">
+          <b>⚠️ Warnings</b>
+          <ul id="warnList"></ul>
+        </div>
+
+        <div id="previewWrap" style="display:none;">
+          <div class="section-label">Preview — nội dung sẽ ghi vào <code>## Result</code></div>
+          <div class="preview-box" id="resultPreview"></div>
+        </div>
+
       </div>
-
-      <div class="divider"></div>
-
-      <div class="btn-row">
-        <button class="btn-submit btn-secondary" id="fetchBtn" onclick="runSync()">1) Fetch &amp; Tính toán</button>
-        <button class="btn-submit" id="updateBtn" onclick="doUpdate()" disabled>2) Cập nhật lên Backlog →</button>
-      </div>
-
-      <div class="result" id="statusResult"></div>
-
-      <div id="scopeWrap" style="display:none;">
-        <div class="section-label">Phạm vi đã fetch</div>
-        <div class="scope-line" id="scopeLine"></div>
-      </div>
-
-      <div class="warn-box" id="warnBox">
-        <b>⚠️ Warnings</b>
-        <ul id="warnList"></ul>
-      </div>
-
-      <div id="previewWrap" style="display:none;">
-        <div class="section-label">Preview — nội dung sẽ ghi vào <code>## Result</code></div>
-        <div class="preview-box" id="resultPreview"></div>
-      </div>
-
     </div>
+
+    <!-- PERSONAL HOURS -->
+    <div id="personalPanel" class="panel">
+      <div class="panel-head">
+        <h2>👤 Personal Hours Report</h2>
+        <p>Tính tổng Actual/Estimated Hours của 1 thành viên trong 1 milestone — gồm tất cả issue (Child PBI + Subtask) được assign cho họ, không giới hạn theo ngày. Read-only, không ghi gì lên Backlog.</p>
+      </div>
+
+      <div class="form-body">
+
+        <div class="field">
+          <label>Milestone <span class="req">*</span></label>
+          <div class="input-row">
+            <select id="personalMilestone"><option value="">— Chọn milestone —</option></select>
+            <button class="icon-btn" onclick="loadMilestones()" title="Tải lại danh sách milestone">🔄</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Thành viên <span class="req">*</span></label>
+          <select id="personalMember"></select>
+        </div>
+
+        <div class="divider"></div>
+
+        <button class="btn-submit" id="personalBtn" onclick="runPersonalReport()">Tính giờ →</button>
+
+        <div class="result" id="personalStatus"></div>
+        <div class="preview-box" id="personalResult"></div>
+        <div class="warn-box" id="personalWarnBox">
+          <b>⚠️ Warnings</b>
+          <ul id="personalWarnList"></ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- TEAM HOURS -->
+    <div id="teamPanel" class="panel">
+      <div class="panel-head">
+        <h2>👥 Team Hours Report</h2>
+        <p>Tính tổng Actual/Estimated Hours của cả team (hoặc 1 nhóm) trong 1 milestone, so sánh theo từng người. Read-only, không ghi gì lên Backlog.</p>
+      </div>
+
+      <div class="form-body">
+
+        <div class="field">
+          <label>Milestone <span class="req">*</span></label>
+          <div class="input-row">
+            <select id="teamMilestone"><option value="">— Chọn milestone —</option></select>
+            <button class="icon-btn" onclick="loadMilestones()" title="Tải lại danh sách milestone">🔄</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Thành viên tính (bỏ chọn để loại trừ)</label>
+          <div class="checkbox-grid" id="teamMemberChecks"></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <button class="btn-submit" id="teamBtn" onclick="runTeamReport()">Tính giờ cả team →</button>
+
+        <div class="result" id="teamStatus"></div>
+        <div class="preview-box" id="teamResult"></div>
+        <div class="warn-box" id="teamWarnBox">
+          <b>⚠️ Warnings</b>
+          <ul id="teamWarnList"></ul>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -249,9 +352,33 @@ const BACKLOG_HOST = 'https://faber-wi.backlog.jp';
 const PROJECT_ID   = 174677;
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const MONTHLY_MILESTONE_RE = /^\d{4}-[A-Za-z]{3}$/; // e.g. "2026-Jul"
+
+const TEAM = [
+  { name: 'Nguyễn Viết Diêm',        id: 399390 },
+  { name: 'Lâm Du Thạch',            id: 431793 },
+  { name: 'Hà Tuấn Đức',             id: 460097 },
+  { name: 'Lê Nguyễn Trung Trực',    id: 554039 },
+  { name: 'Nguyễn Lê Minh',          id: 542390 },
+  { name: 'Phạm Minh Luân',          id: 542388 },
+  { name: 'Trần Minh Khôi',          id: 647002 },
+  { name: 'Kota Kobayashi',          id: 567335 },
+];
 
 let months = []; // [{year, month}]
 let pending = null; // { root, resultSection }
+let milestonesLoaded = false;
+
+// ── Tabs ──────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.getElementById('syncPanel').classList.toggle('active', name === 'sync');
+  document.getElementById('personalPanel').classList.toggle('active', name === 'personal');
+  document.getElementById('teamPanel').classList.toggle('active', name === 'team');
+  if ((name === 'personal' || name === 'team') && !milestonesLoaded && getApiKey()) {
+    loadMilestones();
+  }
+}
 
 // ── API key ───────────────────────────────────────────────────────
 function toggleKey() {
@@ -276,7 +403,7 @@ function clearKey() {
 })();
 function getApiKey() { return document.getElementById('apiKey').value.trim(); }
 
-// ── Month tags ────────────────────────────────────────────────────
+// ── Month tags (Sync tab) ────────────────────────────────────────
 function addMonth() {
   const val = document.getElementById('monthPicker').value; // "YYYY-MM"
   if (!val) return;
@@ -318,13 +445,15 @@ function maxDate(a,b) { return a > b ? a : b; }
 function minDate(a,b) { return a < b ? a : b; }
 function round1(x) { return Math.round(x * 10) / 10; }
 function fmtHrs(x) { const r = round1(x); return (Number.isInteger(r) ? r : r.toFixed(1)); }
-function toISODate(d) { return d.toISOString().slice(0,10); }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-function showStatus(type, html) {
-  const el = document.getElementById('statusResult');
+function showResultBox(id, type, html) {
+  const el = document.getElementById(id);
   el.className = 'result ' + type; el.style.display = 'block'; el.innerHTML = html;
 }
-function hideStatus() { document.getElementById('statusResult').style.display = 'none'; }
+function hideResultBox(id) { document.getElementById(id).style.display = 'none'; }
+function showStatus(type, html) { showResultBox('statusResult', type, html); }
+function hideStatus() { hideResultBox('statusResult'); }
 function resetSyncState() {
   pending = null;
   document.getElementById('updateBtn').disabled = true;
@@ -409,7 +538,220 @@ async function verifyFetchCount(milestoneId, extraParams, actualLength, label) {
   return null;
 }
 
-// ── Core calculation for one month ─────────────────────────────────
+// ── Milestone list (shared by Personal + Team tabs) ────────────────
+async function loadMilestones() {
+  const key = getApiKey();
+  if (!key) { showResultBox('personalStatus', 'error', '⚠️ Vui lòng nhập Backlog API key trước.'); return; }
+  try {
+    const versions = await backlogGet(`/api/v2/projects/${PROJECT_ID}/versions`, {});
+    const active = versions.filter(v => !v.archived).sort((a,b) => a.name.localeCompare(b.name));
+    const monthly = active.filter(v => MONTHLY_MILESTONE_RE.test(v.name));
+    const shown = monthly.length > 0 ? monthly : active;
+    const fallbackNote = monthly.length > 0
+      ? ''
+      : '<option value="" disabled>— Không thấy milestone dạng YYYY-Mon, hiện tất cả —</option>';
+    const optsHtml = '<option value="">— Chọn milestone —</option>' + fallbackNote +
+      shown.map(v => `<option value="${v.id}">${escapeHtml(v.name)}</option>`).join('');
+    document.getElementById('personalMilestone').innerHTML = optsHtml;
+    document.getElementById('teamMilestone').innerHTML = optsHtml;
+    milestonesLoaded = true;
+  } catch (e) {
+    showResultBox('personalStatus', 'error', `❌ Không tải được danh sách milestone: ${e.message}`);
+    showResultBox('teamStatus', 'error', `❌ Không tải được danh sách milestone: ${e.message}`);
+  }
+}
+
+function populatePersonalMemberSelect() {
+  const el = document.getElementById('personalMember');
+  el.innerHTML = '<option value="">— Chọn thành viên —</option>' + TEAM.map(m => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('');
+}
+
+function renderTeamChecks() {
+  const wrap = document.getElementById('teamMemberChecks');
+  wrap.innerHTML = TEAM.map((m, i) => `
+    <label class="checkbox-chip" id="chip_${i}">
+      <input type="checkbox" checked data-idx="${i}" onchange="updateChipStyle(${i})" />
+      ${escapeHtml(m.name)}
+    </label>`).join('');
+}
+function updateChipStyle(i) {
+  const chip = document.getElementById('chip_' + i);
+  const checked = chip.querySelector('input').checked;
+  chip.classList.toggle('unchecked', !checked);
+}
+
+// ── Shared: compute hours for 1 member in 1 milestone ──────────────
+// No date filter — every issue (Child PBI + Subtask) assigned to this member
+// in this milestone counts, regardless of startDate/dueDate.
+async function computeMemberHours(milestoneId, memberId) {
+  const issues = await fetchAllIssues(milestoneId, { assigneeId: [memberId] });
+
+  let expectedTotal = null;
+  const warnings = [];
+  try {
+    const countResp = await backlogGet('/api/v2/issues/count', {
+      projectId: [PROJECT_ID], milestoneId: [milestoneId], assigneeId: [memberId]
+    });
+    expectedTotal = typeof countResp?.count === 'number' ? countResp.count : null;
+    if (expectedTotal !== null && expectedTotal !== issues.length) {
+      warnings.push(`Fetch issues theo assignee: fetch được ${issues.length} issue nhưng Backlog count API báo ${expectedTotal} issue — có thể bị sót do phân trang, nên kiểm tra lại thủ công trên Backlog.`);
+    }
+  } catch (e) {
+    // count endpoint unreachable/unsupported — not fatal, expectedTotal stays null
+  }
+
+  const filtered = issues.filter(i => !(i.summary || '').includes('[ROOT]'));
+
+  let totalActual = 0, totalEstimated = 0, childCount = 0, subCount = 0;
+  for (const issue of filtered) {
+    let est = issue.estimatedHours;
+    let act = issue.actualHours;
+    if (typeof est === 'undefined' || typeof act === 'undefined') {
+      const full = await backlogGet(`/api/v2/issues/${issue.id}`, {});
+      est = full.estimatedHours; act = full.actualHours;
+    }
+    est = est ?? 0;
+    if (act == null) {
+      warnings.push(`${issue.issueKey} (${issue.summary}): actualHours = null → counted as 0h`);
+      act = 0;
+    }
+    totalEstimated += est;
+    totalActual += act;
+    if (issue.parentIssueId != null) subCount++; else childCount++;
+  }
+
+  return {
+    totalActual: round1(totalActual),
+    totalEstimated: round1(totalEstimated),
+    issueCount: filtered.length,
+    expectedTotal,
+    childCount, subCount, warnings
+  };
+}
+
+// ── Personal Hours Report ──────────────────────────────────────────
+async function runPersonalReport() {
+  const key = getApiKey();
+  const milestoneId = document.getElementById('personalMilestone').value;
+  const memberId = document.getElementById('personalMember').value;
+
+  hideResultBox('personalStatus');
+  document.getElementById('personalResult').style.display = 'none';
+  document.getElementById('personalWarnBox').style.display = 'none';
+
+  if (!key) return showResultBox('personalStatus', 'error', '⚠️ Vui lòng nhập Backlog API key.');
+  if (!milestoneId) return showResultBox('personalStatus', 'error', '⚠️ Vui lòng chọn milestone.');
+  if (!memberId) return showResultBox('personalStatus', 'error', '⚠️ Vui lòng chọn thành viên.');
+
+  const btn = document.getElementById('personalBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner-inline"></span>Đang tính...';
+
+  try {
+    const milestoneName = document.getElementById('personalMilestone').selectedOptions[0].textContent;
+    const memberName = document.getElementById('personalMember').selectedOptions[0].textContent;
+    const r = await computeMemberHours(milestoneId, memberId);
+
+    const variance = round1(r.totalActual - r.totalEstimated);
+    const variancePct = r.totalEstimated > 0 ? Math.round((variance / r.totalEstimated) * 100) : null;
+    const varStr = variancePct === null
+      ? 'N/A'
+      : `${variance >= 0 ? '+' : ''}${fmtHrs(variance)}h (${variancePct >= 0 ? '+' : ''}${variancePct}%)`;
+
+    const md =
+`👤 **Member:** ${memberName}
+📅 **Milestone:** ${milestoneName}
+📊 **Issues:** ${r.issueCount}/${r.expectedTotal ?? '?'} (Child PBIs: ${r.childCount} | Subtasks: ${r.subCount})
+
+| | Hours |
+|---|---|
+| ✅ Total Actual | ${fmtHrs(r.totalActual)}h |
+| 📋 Total Estimated | ${fmtHrs(r.totalEstimated)}h |
+| 📈 Variance | ${varStr} |`;
+
+    document.getElementById('personalResult').innerHTML = marked.parse(md);
+    document.getElementById('personalResult').style.display = 'block';
+
+    if (r.warnings.length > 0) {
+      document.getElementById('personalWarnList').innerHTML = r.warnings.map(w => `<li>${w}</li>`).join('');
+      document.getElementById('personalWarnBox').style.display = 'block';
+    }
+    showResultBox('personalStatus', 'success', '✅ Đã tính xong.');
+  } catch (e) {
+    showResultBox('personalStatus', 'error', `❌ <strong>Lỗi:</strong> ${e.message}`);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Tính giờ →';
+  }
+}
+
+// ── Team Hours Report ──────────────────────────────────────────────
+async function runTeamReport() {
+  const key = getApiKey();
+  const milestoneId = document.getElementById('teamMilestone').value;
+
+  hideResultBox('teamStatus');
+  document.getElementById('teamResult').style.display = 'none';
+  document.getElementById('teamWarnBox').style.display = 'none';
+
+  if (!key) return showResultBox('teamStatus', 'error', '⚠️ Vui lòng nhập Backlog API key.');
+  if (!milestoneId) return showResultBox('teamStatus', 'error', '⚠️ Vui lòng chọn milestone.');
+
+  const checks = Array.from(document.querySelectorAll('#teamMemberChecks input[type="checkbox"]'));
+  const includedIdx = checks.filter(c => c.checked).map(c => parseInt(c.dataset.idx, 10));
+  if (includedIdx.length === 0) return showResultBox('teamStatus', 'error', '⚠️ Vui lòng chọn ít nhất 1 thành viên.');
+
+  const btn = document.getElementById('teamBtn');
+  btn.disabled = true;
+  const milestoneName = document.getElementById('teamMilestone').selectedOptions[0].textContent;
+
+  try {
+    const results = [];
+    for (let i = 0; i < includedIdx.length; i++) {
+      const member = TEAM[includedIdx[i]];
+      btn.innerHTML = `<span class="spinner-inline"></span>Đang tính cho ${member.name}... (${i+1}/${includedIdx.length})`;
+      const r = await computeMemberHours(milestoneId, member.id);
+      results.push({ member, ...r });
+    }
+
+    const teamEst = round1(results.reduce((s,r) => s + r.totalEstimated, 0));
+    const teamAct = round1(results.reduce((s,r) => s + r.totalActual, 0));
+    const teamVar = round1(teamAct - teamEst);
+
+    const rows = results.map(r => {
+      const v = round1(r.totalActual - r.totalEstimated);
+      return `| ${r.member.name} | ${r.issueCount}/${r.expectedTotal ?? '?'} | ${fmtHrs(r.totalEstimated)}h | ${fmtHrs(r.totalActual)}h | ${v >= 0 ? '+' : ''}${fmtHrs(v)}h |`;
+    }).join('\n');
+
+    const excludedNames = TEAM.filter((m, idx) => !includedIdx.includes(idx)).map(m => m.name);
+    const excludedNote = excludedNames.length ? ` (excl. ${excludedNames.join(', ')})` : '';
+
+    const md =
+`📅 **Milestone:** ${milestoneName}
+👥 **Members:** ${results.length} members${excludedNote}
+
+| Member | Issues | Est | Act | Variance |
+|---|---|---|---|---|
+${rows}
+| **TOTAL** |  | **${fmtHrs(teamEst)}h** | **${fmtHrs(teamAct)}h** | **${teamVar >= 0 ? '+' : ''}${fmtHrs(teamVar)}h** |`;
+
+    document.getElementById('teamResult').innerHTML = marked.parse(md);
+    document.getElementById('teamResult').style.display = 'block';
+
+    const allWarnings = [];
+    results.forEach(r => r.warnings.forEach(w => allWarnings.push(`${r.member.name}: ${w}`)));
+    if (allWarnings.length > 0) {
+      document.getElementById('teamWarnList').innerHTML = allWarnings.map(w => `<li>${w}</li>`).join('');
+      document.getElementById('teamWarnBox').style.display = 'block';
+    }
+
+    showResultBox('teamStatus', 'success', '✅ Đã tính xong.');
+  } catch (e) {
+    showResultBox('teamStatus', 'error', `❌ <strong>Lỗi:</strong> ${e.message}`);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Tính giờ cả team →';
+  }
+}
+
+// ── Core calculation for one month (Sync tab) ──────────────────────
 async function calcMonth(milestoneId, year, month) {
   const monthStart = `${year}-${pad2(month)}-01`;
   const lastDay = new Date(year, month, 0).getDate();
@@ -553,7 +895,6 @@ async function runSync() {
       milestoneName = found ? found.name : `#${override}`;
       milestoneSource = 'nhập thủ công';
     } else {
-      const MONTHLY_MILESTONE_RE = /^\d{4}-[A-Za-z]{3}$/; // e.g. "2026-Jul"
       const projectMilestones = root.milestone.filter(m => !MONTHLY_MILESTONE_RE.test(m.name));
       if (projectMilestones.length === 1) {
         milestoneId = projectMilestones[0].id;
@@ -698,6 +1039,8 @@ async function doUpdate() {
 }
 
 renderMonths();
+populatePersonalMemberSelect();
+renderTeamChecks();
 </script>
 </body>
 </html>
