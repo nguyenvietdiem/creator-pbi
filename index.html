@@ -198,6 +198,10 @@
       background: var(--accent); color: #fff; padding: 2px 9px; border-radius: 10px;
       font-weight: 700; font-size: 11px; margin-left: 4px; display: inline-block;
     }
+    .status-pill {
+      color: #fff; padding: 3px 10px; border-radius: 10px; font-size: 11.5px;
+      font-weight: 700; display: inline-block; white-space: nowrap;
+    }
 
     .spinner-inline { display: inline-block; width: 11px; height: 11px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: -1px; margin-right: 5px; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -683,6 +687,25 @@ async function verifyFetchCountFlexible(extraParams, actualLength, label) {
   return null;
 }
 
+// Backlog returns each status's real display color via the statuses endpoint —
+// use it directly instead of guessing colors, so badges match Backlog exactly.
+let statusColorMap = null;
+async function loadStatusColors() {
+  if (statusColorMap) return statusColorMap;
+  try {
+    const statuses = await backlogGet(`/api/v2/projects/${PROJECT_ID}/statuses`, {});
+    statusColorMap = new Map(statuses.map(s => [s.id, s.color]));
+  } catch (e) {
+    statusColorMap = new Map();
+  }
+  return statusColorMap;
+}
+function statusPill(status) {
+  if (!status) return '—';
+  const color = statusColorMap?.get(status.id) || '#999999';
+  return `<span class="status-pill" style="background:${color}">${escapeHtml(status.name)}</span>`;
+}
+
 // ── Milestone list (shared by Personal + Team + Week tabs) ─────────
 let cachedVersions = null;
 async function fetchProjectVersions() {
@@ -1012,10 +1035,13 @@ async function runWeekView() {
 
     const missingParentIds = [...subtasksByParent.keys()].filter(pid => !directParents.has(pid));
     const fetchedParents = new Map();
-    await Promise.all(missingParentIds.map(async pid => {
-      try { fetchedParents.set(pid, await backlogGet(`/api/v2/issues/${pid}`, {})); }
-      catch (e) { fetchedParents.set(pid, null); }
-    }));
+    await Promise.all([
+      loadStatusColors(),
+      ...missingParentIds.map(async pid => {
+        try { fetchedParents.set(pid, await backlogGet(`/api/v2/issues/${pid}`, {})); }
+        catch (e) { fetchedParents.set(pid, null); }
+      })
+    ]);
 
     const dateKey = (i) => i?.dueDate ? i.dueDate.slice(0,10) : (i?.startDate ? i.startDate.slice(0,10) : '9999-99-99');
     const sortIssues = (arr) => arr.slice().sort((a,b) => dateKey(a).localeCompare(dateKey(b)));
@@ -1039,7 +1065,6 @@ async function runWeekView() {
     const rowIsDueToday = (i) => i && i.dueDate && i.dueDate.slice(0,10) === today;
 
     const renderIssueCells = (i, { isChild, note }) => {
-      const milestoneNames = (i.milestone || []).map(m => m.name).join(', ') || '—';
       const type = i.parentIssueId == null ? 'Child PBI' : (i.issueType?.name || 'Subtask');
       const noteHtml = note ? ` <span class="hint-text">${note}</span>` : '';
       const summaryHtml = isChild
@@ -1049,23 +1074,22 @@ async function runWeekView() {
         <td><a href="${BACKLOG_HOST}/view/${i.issueKey}" target="_blank">${i.issueKey}</a></td>
         <td>${summaryHtml}</td>
         <td>${escapeHtml(type)}</td>
-        <td>${escapeHtml(milestoneNames)}</td>
         <td>${escapeHtml(i.assignee?.name || '—')}</td>
-        <td>${escapeHtml(i.status?.name || '—')}</td>
+        <td>${statusPill(i.status)}</td>
         <td>${dateCell(i.startDate ? i.startDate.slice(0,10) : null)}</td>
         <td>${dateCell(i.dueDate ? i.dueDate.slice(0,10) : null)}</td>`;
     };
 
     let bodyHtml = '';
     if (groups.length === 0) {
-      bodyHtml = `<tr><td colspan="8" style="text-align:center; color:var(--faint); padding:1.2rem;">Không có issue nào trong khoảng ${weekStart} → ${weekEnd}${hideClosed ? ' (đã ẩn Closed)' : ''}.</td></tr>`;
+      bodyHtml = `<tr><td colspan="7" style="text-align:center; color:var(--faint); padding:1.2rem;">Không có issue nào trong khoảng ${weekStart} → ${weekEnd}${hideClosed ? ' (đã ẩn Closed)' : ''}.</td></tr>`;
     } else {
       groups.forEach(g => {
         if (g.parent) {
           const note = !g.parentInScope ? '(bản thân PBI này không nằm trong tuần — hiện để có ngữ cảnh)' : '';
           bodyHtml += `<tr class="week-row-parent${rowIsDueToday(g.parent) && g.parentInScope ? ' row-due-today' : ''}">${renderIssueCells(g.parent, { isChild:false, note })}</tr>`;
         } else {
-          bodyHtml += `<tr class="week-row-parent"><td colspan="8">❔ Parent PBI #${g.pid} <span class="hint-text">(không tải được chi tiết)</span></td></tr>`;
+          bodyHtml += `<tr class="week-row-parent"><td colspan="7">❔ Parent PBI #${g.pid} <span class="hint-text">(không tải được chi tiết)</span></td></tr>`;
         }
         g.subtasks.forEach(s => {
           bodyHtml += `<tr class="week-row-child${rowIsDueToday(s) ? ' row-due-today' : ''}">${renderIssueCells(s, { isChild:true })}</tr>`;
@@ -1075,7 +1099,7 @@ async function runWeekView() {
 
     const tableHtml = `
       <table class="week-table">
-        <thead><tr><th>Key</th><th>Summary</th><th>Type</th><th>Milestone</th><th>Assignee</th><th>Status</th><th>Start</th><th>Due</th></tr></thead>
+        <thead><tr><th>Key</th><th>Summary</th><th>Type</th><th>Assignee</th><th>Status</th><th>Start</th><th>Due</th></tr></thead>
         <tbody>${bodyHtml}</tbody>
       </table>`;
 
