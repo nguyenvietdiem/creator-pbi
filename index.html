@@ -148,7 +148,36 @@
     .result.success { background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success-text); }
     .result.error { background: var(--error-bg); border: 1px solid var(--error-border); color: var(--error-text); }
     .result.info { background: var(--accent-bg); border: 1px solid #d0d0f8; color: var(--accent); }
+    .result.warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text); }
     .result a { color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+
+    .capacity-box { border-radius: var(--radius-sm); padding: 0.9rem 1rem; font-size: 13px; line-height: 1.7; border: 1px solid var(--border); background: var(--surface-2); }
+    .capacity-box.ok { background: var(--success-bg); border-color: var(--success-border); }
+    .capacity-box.warn { background: var(--warn-bg); border-color: var(--warn-border); }
+    .capacity-box.over { background: var(--error-bg); border-color: var(--error-border); }
+    .capacity-box .cap-headline { font-size: 15px; font-weight: 800; margin-bottom: 4px; }
+    .capacity-box.ok .cap-headline { color: var(--success-text); }
+    .capacity-box.warn .cap-headline { color: var(--warn-text); }
+    .capacity-box.over .cap-headline { color: var(--error-text); }
+    .capacity-box .cap-sub { color: var(--muted); font-size: 12px; }
+
+    .type-badge {
+      display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700;
+      color: #fff; padding: 3px 9px; border-radius: 20px; white-space: nowrap; line-height: 1.3;
+    }
+    .type-badge.pbi        { background: #2b2b2b; }
+    .type-badge.test       { background: #90a836; }
+    .type-badge.code       { background: #767aaa; }
+    .type-badge.document   { background: #da7595; }
+    .type-badge.understand { background: #e8492e; }
+    .type-badge.research   { background: #e4764e; }
+    .type-badge.design     { background: #db3f26; }
+    .type-badge.configure  { background: #4998b7; }
+    .type-badge.review     { background: #54a689; }
+    .type-badge.default    { background: #71716e; }
+
+    .preview-box table tr.task-row-over td { background: var(--error-bg); color: var(--error-text); }
+    .preview-box table tr.task-row-over td:first-child { border-left: 3px solid var(--error-border); }
 
     .warn-box {
       display: none; background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text);
@@ -280,7 +309,7 @@
     <div id="personalPanel" class="panel">
       <div class="panel-head">
         <h2>👤 Personal Hours Report</h2>
-        <p>Tính tổng Actual/Estimated Hours của 1 thành viên trong 1 tháng cụ thể, dựa theo <b>startDate/dueDate overlap với tháng</b> (giống logic Sync Result) — không phải theo milestone tag. Child PBI được prorate theo số ngày chồng lấn, Subtask tính full giờ. Read-only, không ghi gì lên Backlog.</p>
+        <p>Tính tổng Actual/Estimated Hours của 1 thành viên trong 1 tháng cụ thể, dựa theo <b>startDate/dueDate overlap với tháng</b> (giống logic Sync Result) — không phải theo milestone tag. Child PBI được prorate theo số ngày chồng lấn, Subtask tính full giờ. Kèm định mức giờ làm việc trong tháng (t2 tới t6, trừ ngày nghỉ) và danh sách task để đối chiếu. Read-only, không ghi gì lên Backlog.</p>
       </div>
 
       <div class="form-body narrow">
@@ -296,12 +325,36 @@
           <select id="personalMember"></select>
         </div>
 
+        <div class="field-row">
+          <div class="field">
+            <label>Giờ làm / ngày</label>
+            <input type="text" id="personalHoursPerDay" value="8" inputmode="decimal" />
+          </div>
+          <div class="field">
+            <label>Số ngày nghỉ trong tháng</label>
+            <input type="text" id="personalLeaveDays" value="0" inputmode="decimal" />
+          </div>
+        </div>
+        <span class="hint-text">Định mức giờ làm = (số ngày t2 tới t6 trong tháng − số ngày nghỉ) × giờ làm/ngày. Chỉ tính t2 tới t6, không tính t7/CN.</span>
+
         <div class="divider"></div>
 
         <button class="btn-submit" id="personalBtn" onclick="runPersonalReport()">Tính giờ →</button>
 
         <div class="result" id="personalStatus"></div>
+
+        <div id="personalCapacityWrap" style="display:none;">
+          <div class="section-label">Định mức giờ làm trong tháng</div>
+          <div class="capacity-box" id="personalCapacityBox"></div>
+        </div>
+
         <div class="preview-box" id="personalResult"></div>
+
+        <div id="personalTaskListWrap" style="display:none;">
+          <div class="section-label">Danh sách task trong tháng (để đối chiếu / chỉnh sửa)</div>
+          <div class="preview-box" id="personalTaskList"></div>
+        </div>
+
         <div class="warn-box" id="personalWarnBox">
           <b>⚠️ Warnings</b>
           <ul id="personalWarnList"></ul>
@@ -529,8 +582,36 @@ function maxDate(a,b) { return a > b ? a : b; }
 function minDate(a,b) { return a < b ? a : b; }
 function round1(x) { return Math.round(x * 10) / 10; }
 function fmtHrs(x) { const r = round1(x); return (Number.isInteger(r) ? r : r.toFixed(1)); }
+function typeBadgeHtml(typeName) {
+  const raw = (typeName || 'Subtask').replace(/[\u{1F300}-\u{1FAFF}\u2190-\u27BF\uFE0F]/gu, '').trim();
+  const lower = raw.toLowerCase();
+  let cls = 'default', icon = '', label = raw || 'Subtask';
+  if (/pbi/.test(lower))          { cls = 'pbi';        icon = '';   label = 'PBI'; }
+  else if (/test/.test(lower))    { cls = 'test';       icon = '✓';  label = 'Test'; }
+  else if (/code/.test(lower))    { cls = 'code';       icon = '💻'; label = 'Code'; }
+  else if (/document/.test(lower)){ cls = 'document';   icon = '📄'; label = 'Document'; }
+  else if (/understand/.test(lower)) { cls = 'understand'; icon = '⭐'; label = 'Understand'; }
+  else if (/research/.test(lower))   { cls = 'research';   icon = '🔍'; label = 'Research'; }
+  else if (/design/.test(lower))     { cls = 'design';     icon = '🎨'; label = 'Design'; }
+  else if (/configure/.test(lower))  { cls = 'configure';  icon = '⚙️'; label = 'Configure'; }
+  else if (/review/.test(lower))     { cls = 'review';      icon = '👀'; label = 'Review'; }
+  return `<span class="type-badge ${cls}">${icon ? icon + ' ' : ''}${escapeHtml(label)}</span>`;
+}
+function countWeekdays(year, month) {
+  const lastDay = new Date(year, month, 0).getDate();
+  let count = 0;
+  for (let d = 1; d <= lastDay; d++) {
+    const dow = new Date(year, month - 1, d).getDay(); // 0=Sun ... 6=Sat
+    if (dow !== 0 && dow !== 6) count++;
+  }
+  return count;
+}
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function escapeMd(s) { return String(s).replace(/\|/g, '\\|'); }
+function setMarkdownHtml(el, md) {
+  el.innerHTML = marked.parse(md);
+  el.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
+}
 
 function showResultBox(id, type, html) {
   const el = document.getElementById(id);
@@ -648,10 +729,14 @@ async function runPersonalReport() {
   const key = getApiKey();
   const mo = parseMonthInput('personalMonth');
   const memberId = document.getElementById('personalMember').value;
+  const hoursPerDay = parseFloat(document.getElementById('personalHoursPerDay').value) || 0;
+  const leaveDays = parseFloat(document.getElementById('personalLeaveDays').value) || 0;
 
   hideResultBox('personalStatus');
   document.getElementById('personalResult').style.display = 'none';
   document.getElementById('personalWarnBox').style.display = 'none';
+  document.getElementById('personalCapacityWrap').style.display = 'none';
+  document.getElementById('personalTaskListWrap').style.display = 'none';
 
   if (!key) return showResultBox('personalStatus', 'error', '⚠️ Vui lòng nhập Backlog API key.');
   if (!mo) return showResultBox('personalStatus', 'error', '⚠️ Vui lòng chọn tháng cần tính.');
@@ -681,8 +766,70 @@ async function runPersonalReport() {
 | 📋 Total Estimated | ${fmtHrs(r.estMonth)}h |
 | 📈 Variance | ${varStr} |`;
 
-    document.getElementById('personalResult').innerHTML = marked.parse(md);
+    setMarkdownHtml(document.getElementById('personalResult'), md);
     document.getElementById('personalResult').style.display = 'block';
+
+    // ── Định mức giờ làm (t2 → t6, trừ ngày nghỉ) ──────────────────
+    const weekdays = countWeekdays(mo.year, mo.month);
+    const workDays = Math.max(0, weekdays - leaveDays);
+    const fullMonthHours = round1(weekdays * hoursPerDay);
+    const capacityHours = round1(workDays * hoursPerDay);
+    const leaveHours = round1(leaveDays * hoursPerDay);
+    const remaining = round1(capacityHours - r.actMonth); // + = còn được làm thêm, − = đã vượt
+    const usedPct = capacityHours > 0 ? Math.round((r.actMonth / capacityHours) * 100) : null;
+
+    let capClass, capHeadline;
+    if (capacityHours <= 0) {
+      capClass = 'warn';
+      capHeadline = '⚠️ Chưa có định mức để so sánh (giờ làm/ngày hoặc số ngày làm = 0)';
+    } else if (r.actMonth > capacityHours) {
+      capClass = 'over';
+      capHeadline = `🔴 VƯỢT định mức ${fmtHrs(Math.abs(remaining))}h (đang ở ${usedPct}%)`;
+    } else if (usedPct >= 90) {
+      capClass = 'warn';
+      capHeadline = `🟠 Gần chạm định mức, còn ${fmtHrs(remaining)}h (đang ở ${usedPct}%)`;
+    } else {
+      capClass = 'ok';
+      capHeadline = `🟢 Còn dư ${fmtHrs(remaining)}h so với định mức (đang ở ${usedPct}%)`;
+    }
+
+    document.getElementById('personalCapacityBox').className = 'capacity-box ' + capClass;
+    document.getElementById('personalCapacityBox').innerHTML =
+      `<div class="cap-headline">${capHeadline}</div>` +
+      `<div style="margin-top:6px;">` +
+        `Nếu đi làm đủ cả tháng (không nghỉ): <b>${weekdays} ngày × ${fmtHrs(hoursPerDay)}h = ${fmtHrs(fullMonthHours)}h</b><br>` +
+        `Trừ ${fmtHrs(leaveDays)} ngày nghỉ (${fmtHrs(leaveHours)}h): còn lại định mức <b>${fmtHrs(workDays)} ngày = ${fmtHrs(capacityHours)}h</b><br>` +
+        `Actual đã log trong Backlog: <b>${fmtHrs(r.actMonth)}h</b>` +
+      `</div>` +
+      `<div class="cap-sub" style="margin-top:6px;">${monthLabel(mo.year, mo.month)} có ${weekdays} ngày t2→t6. Nếu số ngày nghỉ hoặc giờ/ngày không đúng thực tế, sửa lại 2 ô phía trên rồi bấm "Tính giờ" lại.</div>`;
+    document.getElementById('personalCapacityWrap').style.display = 'block';
+
+    // ── Danh sách task trong tháng để đối chiếu ─────────────────────
+    if (r.issuesDetail.length > 0) {
+      const OVER_THRESHOLD = 4; // giờ — Act vượt Est quá mức này thì bôi đỏ để soát lại
+      const rowsHtml = r.issuesDetail.map(d => {
+        const over = round1(d.act - d.est);
+        const isOver = over > OVER_THRESHOLD;
+        const rowClass = isOver ? ' class="task-row-over"' : '';
+        const actCell = isOver ? `${fmtHrs(d.act)}h ⚠️` : `${fmtHrs(d.act)}h`;
+        return `<tr${rowClass}>` +
+          `<td><a href="${BACKLOG_HOST}/view/${d.issueKey}" target="_blank" rel="noopener noreferrer">${escapeHtml(d.issueKey)}</a></td>` +
+          `<td>${typeBadgeHtml(d.type)} ${escapeHtml(d.summary)}</td>` +
+          `<td>${fmtHrs(d.est)}h</td>` +
+          `<td>${actCell}</td>` +
+        `</tr>`;
+      }).join('');
+      const taskHtml =
+        `<table><thead><tr><th>Issue</th><th>Tên</th><th>Est</th><th>Act</th></tr></thead>` +
+        `<tbody>${rowsHtml}</tbody></table>` +
+        `<div class="cap-sub" style="margin-top:8px;">Dòng bôi đỏ: Act vượt Est quá ${OVER_THRESHOLD}h, nên kiểm tra lại log giờ hoặc estimate.</div>`;
+      const taskListEl = document.getElementById('personalTaskList');
+      taskListEl.innerHTML = taskHtml;
+      taskListEl.style.display = 'block';
+      document.getElementById('personalTaskListWrap').style.display = 'block';
+    } else {
+      document.getElementById('personalTaskListWrap').style.display = 'none';
+    }
 
     if (r.warnings.length > 0) {
       document.getElementById('personalWarnList').innerHTML = r.warnings.map(w => `<li>${w}</li>`).join('');
@@ -745,7 +892,7 @@ async function runTeamReport() {
 ${rows}
 | **TOTAL** |  | **${fmtHrs(teamEst)}h** | **${fmtHrs(teamAct)}h** | **${teamVar >= 0 ? '+' : ''}${fmtHrs(teamVar)}h** |`;
 
-    document.getElementById('teamResult').innerHTML = marked.parse(md);
+    setMarkdownHtml(document.getElementById('teamResult'), md);
     document.getElementById('teamResult').style.display = 'block';
 
     const allWarnings = [];
@@ -793,6 +940,7 @@ async function calcMonth(scopeParams, year, month) {
 
   const warnings = [...paginationWarnings];
   const groups = {}; // type -> {est, act, count}
+  const issuesDetail = []; // per-issue rows for listing/review
   let estMonth = 0, actMonth = 0, childCount = 0, subCount = 0;
 
   for (const issue of merged) {
@@ -837,15 +985,28 @@ async function calcMonth(scopeParams, year, month) {
     estMonth += estContrib;
     actMonth += actContrib;
     if (isSubtask) subCount++; else childCount++;
+
+    issuesDetail.push({
+      issueKey: issue.issueKey,
+      summary: issue.summary,
+      type: issue.issueType?.name || (isSubtask ? 'Subtask' : 'PBI'),
+      status: issue.status?.name || '',
+      startDate: issue.startDate ? issue.startDate.slice(0,10) : '',
+      dueDate: issue.dueDate ? issue.dueDate.slice(0,10) : '',
+      est: estContrib,
+      act: actContrib
+    });
   }
 
   if (actMonth === 0 && merged.length > 0) {
     warnings.push(`All actual hours are 0 for ${monthLabel(year, month)} — please verify hours have been logged`);
   }
 
+  issuesDetail.sort((a,b) => (a.dueDate || '').localeCompare(b.dueDate || '') || a.issueKey.localeCompare(b.issueKey));
+
   return {
     year, month, estMonth: round1(estMonth), actMonth: round1(actMonth),
-    groups, warnings, childCount, subCount, issueCount: merged.length
+    groups, warnings, childCount, subCount, issueCount: merged.length, issuesDetail
   };
 }
 
@@ -1019,7 +1180,7 @@ ${allBlocks.map(b => b.raw).join('\n\n')}`;
       document.getElementById('warnBox').style.display = 'block';
     }
 
-    document.getElementById('resultPreview').innerHTML = marked.parse(resultSection);
+    setMarkdownHtml(document.getElementById('resultPreview'), resultSection);
     document.getElementById('resultPreview').style.display = 'block';
     document.getElementById('previewWrap').style.display = 'block';
 
@@ -1111,7 +1272,7 @@ ${summaryRows}
       document.getElementById('adhocWarnBox').style.display = 'block';
     }
 
-    document.getElementById('adhocPreview').innerHTML = marked.parse(md);
+    setMarkdownHtml(document.getElementById('adhocPreview'), md);
     document.getElementById('adhocPreview').style.display = 'block';
     document.getElementById('adhocPreviewWrap').style.display = 'block';
 
