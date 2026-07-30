@@ -179,6 +179,10 @@
     .preview-box table tr.task-row-over td { background: var(--error-bg); color: var(--error-text); }
     .preview-box table tr.task-row-over td:first-child { border-left: 3px solid var(--error-border); }
 
+    .task-link { color: var(--text); text-decoration: none; font-weight: 600; }
+    .task-link:hover { text-decoration: underline; color: var(--accent); }
+    .task-issuekey { font-size: 10.5px; color: var(--faint); margin-top: 3px; }
+
     .warn-box {
       display: none; background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text);
       border-radius: var(--radius-sm); padding: 0.8rem 1rem; font-size: 12.5px; line-height: 1.7;
@@ -551,20 +555,33 @@ function maxDate(a,b) { return a > b ? a : b; }
 function minDate(a,b) { return a < b ? a : b; }
 function round1(x) { return Math.round(x * 10) / 10; }
 function fmtHrs(x) { const r = round1(x); return (Number.isInteger(r) ? r : r.toFixed(1)); }
-function typeBadgeHtml(typeName) {
+function classifyIssueType(typeName) {
   const raw = (typeName || 'Subtask').replace(/[\u{1F300}-\u{1FAFF}\u2190-\u27BF\uFE0F]/gu, '').trim();
   const lower = raw.toLowerCase();
-  let cls = 'default', icon = '', label = raw || 'Subtask';
-  if (/pbi/.test(lower))          { cls = 'pbi';        icon = '';   label = 'PBI'; }
-  else if (/test/.test(lower))    { cls = 'test';       icon = '✓';  label = 'Test'; }
-  else if (/code/.test(lower))    { cls = 'code';       icon = '💻'; label = 'Code'; }
-  else if (/document/.test(lower)){ cls = 'document';   icon = '📄'; label = 'Document'; }
-  else if (/understand/.test(lower)) { cls = 'understand'; icon = '⭐'; label = 'Understand'; }
-  else if (/research/.test(lower))   { cls = 'research';   icon = '🔍'; label = 'Research'; }
-  else if (/design/.test(lower))     { cls = 'design';     icon = '🎨'; label = 'Design'; }
-  else if (/configure/.test(lower))  { cls = 'configure';  icon = '⚙️'; label = 'Configure'; }
-  else if (/review/.test(lower))     { cls = 'review';      icon = '👀'; label = 'Review'; }
+  if (/pbi/.test(lower))              return { cls: 'pbi',        icon: '',   label: 'PBI' };
+  if (/test/.test(lower))             return { cls: 'test',       icon: '✓',  label: 'Test' };
+  if (/code/.test(lower))             return { cls: 'code',       icon: '💻', label: 'Code' };
+  if (/document/.test(lower))         return { cls: 'document',   icon: '📄', label: 'Document' };
+  if (/understand/.test(lower))       return { cls: 'understand', icon: '⭐', label: 'Understand' };
+  if (/research/.test(lower))         return { cls: 'research',   icon: '🔍', label: 'Research' };
+  if (/design/.test(lower))           return { cls: 'design',     icon: '🎨', label: 'Design' };
+  if (/configure/.test(lower))        return { cls: 'configure',  icon: '⚙️', label: 'Configure' };
+  if (/review/.test(lower))           return { cls: 'review',     icon: '👀', label: 'Review' };
+  return { cls: 'default', icon: '', label: raw || 'Subtask' };
+}
+function typeBadgeHtml(typeName) {
+  const { cls, icon, label } = classifyIssueType(typeName);
   return `<span class="type-badge ${cls}">${icon ? icon + ' ' : ''}${escapeHtml(label)}</span>`;
+}
+// Đã có badge hiển thị loại rồi thì bỏ tiền tố trùng trong tên, ví dụ
+// "🧪 Test - Migrate ..." + badge "Test" → chỉ còn "Migrate ..."
+function stripTypePrefix(summary, typeName) {
+  const { label } = classifyIssueType(typeName);
+  let s = (summary || '').trim();
+  s = s.replace(/^[\p{Extended_Pictographic}\uFE0F\s]+/u, ''); // bỏ emoji đầu chuỗi
+  const re = new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*[-:–]\\s*', 'i');
+  s = s.replace(re, '');
+  return s.trim() || summary;
 }
 function countWeekdays(year, month) {
   const lastDay = new Date(year, month, 0).getDate();
@@ -783,14 +800,16 @@ async function runHoursReport() {
           const rowClass = isOver ? ' class="task-row-over"' : '';
           const actCell = isOver ? `${fmtHrs(d.act)}h ⚠️` : `${fmtHrs(d.act)}h`;
           return `<tr${rowClass}>` +
-            `<td><a href="${BACKLOG_HOST}/view/${d.issueKey}" target="_blank" rel="noopener noreferrer">${escapeHtml(d.issueKey)}</a></td>` +
-            `<td>${typeBadgeHtml(d.type)} ${escapeHtml(d.summary)}</td>` +
+            `<td>` +
+              `<a href="${BACKLOG_HOST}/view/${d.issueKey}" target="_blank" rel="noopener noreferrer" class="task-link">${typeBadgeHtml(d.type)} ${escapeHtml(stripTypePrefix(d.summary, d.type))}</a>` +
+              `<div class="task-issuekey">${escapeHtml(d.issueKey)}</div>` +
+            `</td>` +
             `<td>${fmtHrs(d.est)}h</td>` +
             `<td>${actCell}</td>` +
           `</tr>`;
         }).join('');
         const taskHtml =
-          `<table><thead><tr><th>Issue</th><th>Tên</th><th>Est</th><th>Act</th></tr></thead>` +
+          `<table><thead><tr><th>Tên</th><th>Est</th><th>Act</th></tr></thead>` +
           `<tbody>${rowsHtml}</tbody></table>` +
           `<div class="cap-sub" style="margin-top:8px;">Dòng bôi đỏ: Act vượt Est quá ${OVER_THRESHOLD}h, nên kiểm tra lại log giờ hoặc estimate.</div>`;
         const taskListEl = document.getElementById('hoursTaskList');
