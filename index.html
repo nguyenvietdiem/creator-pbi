@@ -131,9 +131,10 @@
 
     .btn-row { display: flex; gap: 10px; }
     .btn-submit {
-      flex: 1; height: 40px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm);
+      flex: 1; background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm);
       font-size: 13px; font-weight: 700; cursor: pointer; letter-spacing: 0.2px;
       transition: background 0.15s, opacity 0.15s, transform 0.1s; box-shadow: 0 1px 3px rgba(91,91,214,0.3);
+      padding: 16px;
     }
     .btn-submit:hover:not(:disabled) { background: #4a4ac4; }
     .btn-submit:active:not(:disabled) { transform: scale(0.99); }
@@ -279,17 +280,15 @@
     <div id="personalPanel" class="panel">
       <div class="panel-head">
         <h2>👤 Personal Hours Report</h2>
-        <p>Tính tổng Actual/Estimated Hours của 1 thành viên trong 1 milestone — gồm tất cả issue (Child PBI + Subtask) được assign cho họ, không giới hạn theo ngày. Read-only, không ghi gì lên Backlog.</p>
+        <p>Tính tổng Actual/Estimated Hours của 1 thành viên trong 1 tháng cụ thể, dựa theo <b>startDate/dueDate overlap với tháng</b> (giống logic Sync Result) — không phải theo milestone tag. Child PBI được prorate theo số ngày chồng lấn, Subtask tính full giờ. Read-only, không ghi gì lên Backlog.</p>
       </div>
 
       <div class="form-body narrow">
 
         <div class="field">
-          <label>Milestone <span class="req">*</span></label>
-          <div class="input-row">
-            <select id="personalMilestone"><option value="">— Chọn milestone —</option></select>
-            <button class="icon-btn" onclick="loadMilestones()" title="Tải lại danh sách milestone">🔄</button>
-          </div>
+          <label>Tháng cần tính <span class="req">*</span></label>
+          <input type="month" id="personalMonth" />
+          <span class="hint-text">Chỉ tính issue có startDate/dueDate chồng lấn với tháng này, bất kể issue thuộc milestone nào.</span>
         </div>
 
         <div class="field">
@@ -314,17 +313,15 @@
     <div id="teamPanel" class="panel">
       <div class="panel-head">
         <h2>👥 Team Hours Report</h2>
-        <p>Tính tổng Actual/Estimated Hours của cả team (hoặc 1 nhóm) trong 1 milestone, so sánh theo từng người. Read-only, không ghi gì lên Backlog.</p>
+        <p>Tính tổng Actual/Estimated Hours của cả team (hoặc 1 nhóm) trong 1 tháng cụ thể, dựa theo <b>startDate/dueDate overlap với tháng</b> (giống logic Sync Result), so sánh theo từng người. Read-only, không ghi gì lên Backlog.</p>
       </div>
 
       <div class="form-body narrow">
 
         <div class="field">
-          <label>Milestone <span class="req">*</span></label>
-          <div class="input-row">
-            <select id="teamMilestone"><option value="">— Chọn milestone —</option></select>
-            <button class="icon-btn" onclick="loadMilestones()" title="Tải lại danh sách milestone">🔄</button>
-          </div>
+          <label>Tháng cần tính <span class="req">*</span></label>
+          <input type="month" id="teamMonth" />
+          <span class="hint-text">Chỉ tính issue có startDate/dueDate chồng lấn với tháng này, bất kể issue thuộc milestone nào.</span>
         </div>
 
         <div class="field">
@@ -417,7 +414,6 @@ const TEAM = [
 let months = []; // [{year, month}] — Sync tab
 let adhocMonths = []; // [{year, month}] — Ad-hoc tab
 let pending = null; // { root, resultSection }
-let milestonesLoaded = false;
 
 // ── Tabs ──────────────────────────────────────────────────────────
 function switchTab(name) {
@@ -426,9 +422,14 @@ function switchTab(name) {
   document.getElementById('personalPanel').classList.toggle('active', name === 'personal');
   document.getElementById('teamPanel').classList.toggle('active', name === 'team');
   document.getElementById('adhocPanel').classList.toggle('active', name === 'adhoc');
-  if ((name === 'personal' || name === 'team') && !milestonesLoaded && getApiKey()) {
-    loadMilestones();
-  }
+}
+
+// Parse a "YYYY-MM" value from an <input type="month">
+function parseMonthInput(id) {
+  const val = document.getElementById(id).value;
+  if (!val) return null;
+  const [y, m] = val.split('-').map(Number);
+  return { year: y, month: m };
 }
 
 // ── API key ───────────────────────────────────────────────────────
@@ -582,18 +583,20 @@ async function backlogPatch(path, formParams) {
   return data;
 }
 
-async function fetchAllIssues(milestoneId, extraParams) {
+// scopeParams is an arbitrary filter object, e.g. { milestoneId: [123] } or
+// { assigneeId: [456] } — whatever the caller needs to scope the query by,
+// on top of projectId which is always applied.
+async function fetchAllIssues(scopeParams) {
   let all = [];
   let offset = 0;
   while (true) {
     const batch = await backlogGet('/api/v2/issues', {
       projectId: [PROJECT_ID],
-      milestoneId: [milestoneId],
       count: 100,
       sort: 'created',
       order: 'asc',
       offset,
-      ...extraParams
+      ...scopeParams
     });
     all = all.concat(batch);
     if (batch.length < 100) break;
@@ -605,12 +608,11 @@ async function fetchAllIssues(milestoneId, extraParams) {
 // Cross-check a paginated fetch against Backlog's own /issues/count endpoint,
 // using the exact same filters. If they don't match, pagination likely missed
 // something (e.g. an API quirk) — surface it as a warning instead of failing silently.
-async function verifyFetchCount(milestoneId, extraParams, actualLength, label) {
+async function verifyFetchCount(scopeParams, actualLength, label) {
   try {
     const countResp = await backlogGet('/api/v2/issues/count', {
       projectId: [PROJECT_ID],
-      milestoneId: [milestoneId],
-      ...extraParams
+      ...scopeParams
     });
     const expected = countResp?.count;
     if (typeof expected === 'number' && expected !== actualLength) {
@@ -620,36 +622,6 @@ async function verifyFetchCount(milestoneId, extraParams, actualLength, label) {
     // count endpoint unreachable/unsupported — not fatal, just skip the cross-check
   }
   return null;
-}
-
-// ── Milestone list (shared by Personal + Team tabs) ─────────
-let cachedVersions = null;
-async function fetchProjectVersions() {
-  if (cachedVersions) return cachedVersions;
-  const versions = await backlogGet(`/api/v2/projects/${PROJECT_ID}/versions`, {});
-  cachedVersions = versions.filter(v => !v.archived).sort((a,b) => a.name.localeCompare(b.name));
-  return cachedVersions;
-}
-
-async function loadMilestones() {
-  const key = getApiKey();
-  if (!key) { showResultBox('personalStatus', 'error', '⚠️ Vui lòng nhập Backlog API key trước.'); return; }
-  try {
-    const active = await fetchProjectVersions();
-    const monthly = active.filter(v => MONTHLY_MILESTONE_RE.test(v.name));
-    const shown = monthly.length > 0 ? monthly : active;
-    const fallbackNote = monthly.length > 0
-      ? ''
-      : '<option value="" disabled>— Không thấy milestone dạng YYYY-Mon, hiện tất cả —</option>';
-    const optsHtml = '<option value="">— Chọn milestone —</option>' + fallbackNote +
-      shown.map(v => `<option value="${v.id}">${escapeHtml(v.name)}</option>`).join('');
-    document.getElementById('personalMilestone').innerHTML = optsHtml;
-    document.getElementById('teamMilestone').innerHTML = optsHtml;
-    milestonesLoaded = true;
-  } catch (e) {
-    showResultBox('personalStatus', 'error', `❌ Không tải được danh sách milestone: ${e.message}`);
-    showResultBox('teamStatus', 'error', `❌ Không tải được danh sách milestone: ${e.message}`);
-  }
 }
 
 function populatePersonalMemberSelect() {
@@ -671,59 +643,10 @@ function updateChipStyle(i) {
   chip.classList.toggle('unchecked', !checked);
 }
 
-// ── Shared: compute hours for 1 member in 1 milestone ──────────────
-// No date filter — every issue (Child PBI + Subtask) assigned to this member
-// in this milestone counts, regardless of startDate/dueDate.
-async function computeMemberHours(milestoneId, memberId) {
-  const issues = await fetchAllIssues(milestoneId, { assigneeId: [memberId] });
-
-  let expectedTotal = null;
-  const warnings = [];
-  try {
-    const countResp = await backlogGet('/api/v2/issues/count', {
-      projectId: [PROJECT_ID], milestoneId: [milestoneId], assigneeId: [memberId]
-    });
-    expectedTotal = typeof countResp?.count === 'number' ? countResp.count : null;
-    if (expectedTotal !== null && expectedTotal !== issues.length) {
-      warnings.push(`Fetch issues theo assignee: fetch được ${issues.length} issue nhưng Backlog count API báo ${expectedTotal} issue — có thể bị sót do phân trang, nên kiểm tra lại thủ công trên Backlog.`);
-    }
-  } catch (e) {
-    // count endpoint unreachable/unsupported — not fatal, expectedTotal stays null
-  }
-
-  const filtered = issues.filter(i => !(i.summary || '').includes('[ROOT]'));
-
-  let totalActual = 0, totalEstimated = 0, childCount = 0, subCount = 0;
-  for (const issue of filtered) {
-    let est = issue.estimatedHours;
-    let act = issue.actualHours;
-    if (typeof est === 'undefined' || typeof act === 'undefined') {
-      const full = await backlogGet(`/api/v2/issues/${issue.id}`, {});
-      est = full.estimatedHours; act = full.actualHours;
-    }
-    est = est ?? 0;
-    if (act == null) {
-      warnings.push(`${issue.issueKey} (${issue.summary}): actualHours = null → counted as 0h`);
-      act = 0;
-    }
-    totalEstimated += est;
-    totalActual += act;
-    if (issue.parentIssueId != null) subCount++; else childCount++;
-  }
-
-  return {
-    totalActual: round1(totalActual),
-    totalEstimated: round1(totalEstimated),
-    issueCount: filtered.length,
-    expectedTotal,
-    childCount, subCount, warnings
-  };
-}
-
 // ── Personal Hours Report ──────────────────────────────────────────
 async function runPersonalReport() {
   const key = getApiKey();
-  const milestoneId = document.getElementById('personalMilestone').value;
+  const mo = parseMonthInput('personalMonth');
   const memberId = document.getElementById('personalMember').value;
 
   hideResultBox('personalStatus');
@@ -731,32 +654,31 @@ async function runPersonalReport() {
   document.getElementById('personalWarnBox').style.display = 'none';
 
   if (!key) return showResultBox('personalStatus', 'error', '⚠️ Vui lòng nhập Backlog API key.');
-  if (!milestoneId) return showResultBox('personalStatus', 'error', '⚠️ Vui lòng chọn milestone.');
+  if (!mo) return showResultBox('personalStatus', 'error', '⚠️ Vui lòng chọn tháng cần tính.');
   if (!memberId) return showResultBox('personalStatus', 'error', '⚠️ Vui lòng chọn thành viên.');
 
   const btn = document.getElementById('personalBtn');
   btn.disabled = true; btn.innerHTML = '<span class="spinner-inline"></span>Đang tính...';
 
   try {
-    const milestoneName = document.getElementById('personalMilestone').selectedOptions[0].textContent;
     const memberName = document.getElementById('personalMember').selectedOptions[0].textContent;
-    const r = await computeMemberHours(milestoneId, memberId);
+    const r = await calcMonth({ assigneeId: [memberId] }, mo.year, mo.month);
 
-    const variance = round1(r.totalActual - r.totalEstimated);
-    const variancePct = r.totalEstimated > 0 ? Math.round((variance / r.totalEstimated) * 100) : null;
+    const variance = round1(r.actMonth - r.estMonth);
+    const variancePct = r.estMonth > 0 ? Math.round((variance / r.estMonth) * 100) : null;
     const varStr = variancePct === null
       ? 'N/A'
       : `${variance >= 0 ? '+' : ''}${fmtHrs(variance)}h (${variancePct >= 0 ? '+' : ''}${variancePct}%)`;
 
     const md =
 `👤 **Member:** ${memberName}
-📅 **Milestone:** ${milestoneName}
-📊 **Issues:** ${r.issueCount}/${r.expectedTotal ?? '?'} (Child PBIs: ${r.childCount} | Subtasks: ${r.subCount})
+📅 **Tháng:** ${monthLabel(mo.year, mo.month)}
+📊 **Issues:** ${r.issueCount} (Child PBIs: ${r.childCount} | Subtasks: ${r.subCount})
 
 | | Hours |
 |---|---|
-| ✅ Total Actual | ${fmtHrs(r.totalActual)}h |
-| 📋 Total Estimated | ${fmtHrs(r.totalEstimated)}h |
+| ✅ Total Actual | ${fmtHrs(r.actMonth)}h |
+| 📋 Total Estimated | ${fmtHrs(r.estMonth)}h |
 | 📈 Variance | ${varStr} |`;
 
     document.getElementById('personalResult').innerHTML = marked.parse(md);
@@ -777,14 +699,14 @@ async function runPersonalReport() {
 // ── Team Hours Report ──────────────────────────────────────────────
 async function runTeamReport() {
   const key = getApiKey();
-  const milestoneId = document.getElementById('teamMilestone').value;
+  const mo = parseMonthInput('teamMonth');
 
   hideResultBox('teamStatus');
   document.getElementById('teamResult').style.display = 'none';
   document.getElementById('teamWarnBox').style.display = 'none';
 
   if (!key) return showResultBox('teamStatus', 'error', '⚠️ Vui lòng nhập Backlog API key.');
-  if (!milestoneId) return showResultBox('teamStatus', 'error', '⚠️ Vui lòng chọn milestone.');
+  if (!mo) return showResultBox('teamStatus', 'error', '⚠️ Vui lòng chọn tháng cần tính.');
 
   const checks = Array.from(document.querySelectorAll('#teamMemberChecks input[type="checkbox"]'));
   const includedIdx = checks.filter(c => c.checked).map(c => parseInt(c.dataset.idx, 10));
@@ -792,31 +714,30 @@ async function runTeamReport() {
 
   const btn = document.getElementById('teamBtn');
   btn.disabled = true;
-  const milestoneName = document.getElementById('teamMilestone').selectedOptions[0].textContent;
 
   try {
     const results = [];
     for (let i = 0; i < includedIdx.length; i++) {
       const member = TEAM[includedIdx[i]];
       btn.innerHTML = `<span class="spinner-inline"></span>Đang tính cho ${member.name}... (${i+1}/${includedIdx.length})`;
-      const r = await computeMemberHours(milestoneId, member.id);
+      const r = await calcMonth({ assigneeId: [member.id] }, mo.year, mo.month);
       results.push({ member, ...r });
     }
 
-    const teamEst = round1(results.reduce((s,r) => s + r.totalEstimated, 0));
-    const teamAct = round1(results.reduce((s,r) => s + r.totalActual, 0));
+    const teamEst = round1(results.reduce((s,r) => s + r.estMonth, 0));
+    const teamAct = round1(results.reduce((s,r) => s + r.actMonth, 0));
     const teamVar = round1(teamAct - teamEst);
 
     const rows = results.map(r => {
-      const v = round1(r.totalActual - r.totalEstimated);
-      return `| ${r.member.name} | ${r.issueCount}/${r.expectedTotal ?? '?'} | ${fmtHrs(r.totalEstimated)}h | ${fmtHrs(r.totalActual)}h | ${v >= 0 ? '+' : ''}${fmtHrs(v)}h |`;
+      const v = round1(r.actMonth - r.estMonth);
+      return `| ${r.member.name} | ${r.issueCount} | ${fmtHrs(r.estMonth)}h | ${fmtHrs(r.actMonth)}h | ${v >= 0 ? '+' : ''}${fmtHrs(v)}h |`;
     }).join('\n');
 
     const excludedNames = TEAM.filter((m, idx) => !includedIdx.includes(idx)).map(m => m.name);
     const excludedNote = excludedNames.length ? ` (excl. ${excludedNames.join(', ')})` : '';
 
     const md =
-`📅 **Milestone:** ${milestoneName}
+`📅 **Tháng:** ${monthLabel(mo.year, mo.month)}
 👥 **Members:** ${results.length} members${excludedNote}
 
 | Member | Issues | Est | Act | Variance |
@@ -842,25 +763,28 @@ ${rows}
   }
 }
 
-// ── Core calculation for one month, given a milestone ──────────────
-// Used by both the Sync tab (project milestone of a Root PBI) and the
-// Ad-hoc tab (fixed ADHOC_MILESTONE_ID) — same overlap + prorate logic.
-async function calcMonth(milestoneId, year, month) {
+// ── Core calculation for one month, given an arbitrary scope ────────
+// scopeParams narrows which issues count, e.g. { milestoneId: [123] } for
+// a project milestone (Sync tab, Ad-hoc tab) or { assigneeId: [456] } for
+// a specific member (Personal/Team Hours tabs) — same overlap + prorate
+// logic either way, so "theo tháng" always means startDate/dueDate overlap
+// with the calendar month, never a milestone tag.
+async function calcMonth(scopeParams, year, month) {
   const monthStart = `${year}-${pad2(month)}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const monthEnd = `${year}-${pad2(month)}-${pad2(lastDay)}`;
 
   const [setA, setB, setC] = await Promise.all([
-    fetchAllIssues(milestoneId, { startDateSince: monthStart, startDateUntil: monthEnd }),
-    fetchAllIssues(milestoneId, { dueDateSince: monthStart, dueDateUntil: monthEnd }),
-    fetchAllIssues(milestoneId, { startDateUntil: monthStart, dueDateSince: monthEnd })
+    fetchAllIssues({ ...scopeParams, startDateSince: monthStart, startDateUntil: monthEnd }),
+    fetchAllIssues({ ...scopeParams, dueDateSince: monthStart, dueDateUntil: monthEnd }),
+    fetchAllIssues({ ...scopeParams, startDateUntil: monthStart, dueDateSince: monthEnd })
   ]);
 
   const monthTag = monthLabel(year, month);
   const paginationWarnings = (await Promise.all([
-    verifyFetchCount(milestoneId, { startDateSince: monthStart, startDateUntil: monthEnd }, setA.length, `Fetch A — startDate trong ${monthTag}`),
-    verifyFetchCount(milestoneId, { dueDateSince: monthStart, dueDateUntil: monthEnd }, setB.length, `Fetch B — dueDate trong ${monthTag}`),
-    verifyFetchCount(milestoneId, { startDateUntil: monthStart, dueDateSince: monthEnd }, setC.length, `Fetch C — spanning ${monthTag}`)
+    verifyFetchCount({ ...scopeParams, startDateSince: monthStart, startDateUntil: monthEnd }, setA.length, `Fetch A — startDate trong ${monthTag}`),
+    verifyFetchCount({ ...scopeParams, dueDateSince: monthStart, dueDateUntil: monthEnd }, setB.length, `Fetch B — dueDate trong ${monthTag}`),
+    verifyFetchCount({ ...scopeParams, startDateUntil: monthStart, dueDateSince: monthEnd }, setC.length, `Fetch C — spanning ${monthTag}`)
   ])).filter(Boolean);
 
   const map = new Map();
@@ -1011,14 +935,14 @@ async function runSync() {
     const monthResults = [];
     const scopeLines = [];
     for (const mo of months) {
-      const mr = await calcMonth(milestoneId, mo.year, mo.month);
+      const mr = await calcMonth({ milestoneId: [milestoneId] }, mo.year, mo.month);
       monthResults.push(mr);
       scopeLines.push(`<b>${monthLabel(mo.year, mo.month)}</b>: ${mr.issueCount} issues (Child PBIs: ${mr.childCount}, Subtasks: ${mr.subCount})`);
     }
 
     // All issues in the whole milestone (for completion-date check), no date filter
-    const allMilestoneIssues = await fetchAllIssues(milestoneId, {});
-    const wholeMilestoneWarning = await verifyFetchCount(milestoneId, {}, allMilestoneIssues.length, `Toàn bộ milestone dự án (${milestoneName})`);
+    const allMilestoneIssues = await fetchAllIssues({ milestoneId: [milestoneId] });
+    const wholeMilestoneWarning = await verifyFetchCount({ milestoneId: [milestoneId] }, allMilestoneIssues.length, `Toàn bộ milestone dự án (${milestoneName})`);
     const childPBIs = allMilestoneIssues.filter(i => i.parentIssueId == null && !(i.summary || '').includes('[ROOT]'));
 
     let completionDate, scheduleVariance;
@@ -1145,7 +1069,7 @@ async function runAdhocReport() {
     const monthResults = [];
     const scopeLines = [];
     for (const mo of adhocMonths) {
-      const mr = await calcMonth(ADHOC_MILESTONE_ID, mo.year, mo.month);
+      const mr = await calcMonth({ milestoneId: [ADHOC_MILESTONE_ID] }, mo.year, mo.month);
       monthResults.push(mr);
       scopeLines.push(`<b>${monthLabel(mo.year, mo.month)}</b>: ${mr.issueCount} issues (Child PBIs: ${mr.childCount}, Subtasks: ${mr.subCount})`);
     }
