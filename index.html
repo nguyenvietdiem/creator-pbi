@@ -1188,6 +1188,7 @@ ${summaryRows}
     }
 
     document.getElementById('adhocPreview').innerHTML = marked.parse(md);
+    document.getElementById('adhocPreview').style.display = 'block';
     document.getElementById('adhocPreviewWrap').style.display = 'block';
 
     showResultBox('adhocStatus', 'success', '✅ Đã tính xong.');
