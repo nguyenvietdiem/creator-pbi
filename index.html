@@ -97,13 +97,22 @@
     label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); display: flex; align-items: center; gap: 3px; }
     label .req { color: #e05; }
 
-    input[type="text"], input[type="month"], input[type="password"], select {
+    input[type="text"], input[type="month"], input[type="date"], input[type="password"], select {
       width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 11px;
       font-size: 13px; color: var(--text); background: var(--surface-2); outline: none; font-family: inherit;
       height: 36px; transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
     }
+    textarea {
+      width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 9px 11px;
+      font-size: 13px; color: var(--text); background: var(--surface-2); outline: none; font-family: inherit;
+      resize: vertical; min-height: 60px; line-height: 1.5; transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+    }
+    textarea:focus { border-color: var(--border-focus); background: var(--surface); box-shadow: 0 0 0 3px rgba(91,91,214,0.1); }
     input:focus, select:focus { border-color: var(--border-focus); background: var(--surface); box-shadow: 0 0 0 3px rgba(91,91,214,0.1); }
     select { cursor: pointer; }
+
+    .toggle-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+    .toggle-row input { accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
 
     .icon-btn {
       height: 36px; min-width: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -243,10 +252,11 @@
 
   <!-- Main card -->
   <div class="card">
-    <div class="tabs" style="grid-template-columns: 1fr 1fr 1fr;">
+    <div class="tabs" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
       <button class="tab active" data-tab="sync" onclick="switchTab('sync')">🔄 Sync Result</button>
       <button class="tab" data-tab="hours" onclick="switchTab('hours')">👤 Giờ làm theo thành viên</button>
       <button class="tab" data-tab="adhoc" onclick="switchTab('adhoc')">📦 Ad-hoc theo tháng</button>
+      <button class="tab" data-tab="createpbi" onclick="switchTab('createpbi')">➕ Tạo PBI Root</button>
     </div>
 
     <!-- SYNC RESULT -->
@@ -414,6 +424,142 @@
       </div>
     </div>
 
+    <!-- CREATE ROOT PBI -->
+    <div id="createPbiPanel" class="panel">
+      <div class="panel-head">
+        <h2>➕ Tạo PBI Root</h2>
+        <p>Tạo mới 1 Root PBI trên Backlog đúng theo template chuẩn (Summary / Goal / Scope / Timeline / Responsibilities / Result). Bạn nhập bằng tiếng Việt, tool tự dịch sang tiếng Anh trước khi ghi lên Backlog (theo đúng LANGUAGE RULE). Có bước xem trước, chỉ tạo thật khi bạn bấm "Tạo trên Backlog".</p>
+      </div>
+
+      <div class="form-body narrow">
+
+        <div class="field">
+          <label>Tên PBI <span class="req">*</span></label>
+          <input type="text" id="rootName" placeholder="Migrate 7 pages sang webpack" />
+          <span class="hint-text">Tiêu đề issue sẽ là: <code>PBI - [ROOT] {tên bạn nhập, đã dịch}</code></span>
+        </div>
+
+        <div class="field">
+          <label>Milestone <span class="req">*</span></label>
+          <div class="input-row">
+            <select id="rootMilestoneSelect"><option value="">— Chọn milestone —</option></select>
+            <button class="icon-btn" onclick="loadRootMilestones()" title="Tải danh sách milestone">🔄</button>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label>Start <span class="req">*</span></label>
+            <input type="date" id="rootStart" />
+          </div>
+          <div class="field">
+            <label>Due <span class="req">*</span></label>
+            <input type="date" id="rootDue" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Category <span class="req">*</span></label>
+          <select id="rootCategory">
+            <option value="509337">Functional</option>
+            <option value="509338">Technical</option>
+            <option value="509339">Inquiry</option>
+            <option value="551636">Support</option>
+          </select>
+        </div>
+
+        <div class="divider"></div>
+        <div class="section-label">Nội dung description</div>
+
+        <div class="field">
+          <label>Summary <span class="req">*</span></label>
+          <textarea id="rootSummaryText" rows="2" placeholder="1 đoạn ngắn mô tả PBI này bao gồm gì (viết tiếng Việt, tool tự dịch)"></textarea>
+        </div>
+
+        <div class="field">
+          <label>Goal <span class="req">*</span></label>
+          <textarea id="rootGoalText" rows="2" placeholder="1 đoạn ngắn mô tả mục tiêu"></textarea>
+        </div>
+
+        <div class="field">
+          <label>Scope — In scope <span class="req">*</span></label>
+          <textarea id="rootInScope" rows="3" placeholder="Mỗi dòng 1 ý, VD:&#10;Migrate trang A sang webpack&#10;Viết unit test cho trang A"></textarea>
+        </div>
+
+        <div class="field">
+          <label>Scope — Out of scope</label>
+          <textarea id="rootOutScope" rows="2" placeholder="Để trống nếu không có — tool sẽ bỏ hẳn block này, không ghi TBD"></textarea>
+        </div>
+
+        <div class="toggle-row">
+          <input type="checkbox" id="rootTranslateToggle" checked />
+          <label style="text-transform:none; font-weight:500; letter-spacing:0;">🌐 Tự dịch Summary/Goal/Scope sang tiếng Anh trước khi tạo (dùng Claude)</label>
+        </div>
+
+        <div class="divider"></div>
+        <div class="section-label">Responsibilities (ghi tên dạng text trong description)</div>
+
+        <div class="field-row">
+          <div class="field">
+            <label>Requester <span class="req">*</span></label>
+            <select id="rootRequester"></select>
+          </div>
+          <div class="field">
+            <label>Owner / PO</label>
+            <select id="rootOwner"></select>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label>TechLead</label>
+            <select id="rootTechLead"></select>
+          </div>
+          <div class="field">
+            <label>Developer/Tester <span class="req">*</span></label>
+            <select id="rootDevTester"></select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Reviewer <span class="req">*</span></label>
+          <select id="rootReviewer"></select>
+        </div>
+
+        <div class="divider"></div>
+        <div class="section-label">Custom field "Tester" trên Backlog</div>
+        <span class="hint-text">Field bắt buộc riêng của Backlog (multi-select), khác với dòng "Developer/Tester" ở trên — dòng trên chỉ là text trong description, field này là data thật để filter/report.</span>
+
+        <div class="field">
+          <label>Tester (chọn 1 hoặc nhiều) <span class="req">*</span></label>
+          <div class="checkbox-grid" id="rootTesterChecks">
+            <span class="tag-empty">Bấm "Tải danh sách Tester" trước</span>
+          </div>
+          <button class="icon-btn" style="margin-top:6px; width:auto; padding:0 12px;" onclick="loadTesterFieldItems()">🔄 Tải danh sách Tester</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="btn-row">
+          <button class="btn-submit btn-secondary" id="rootPreviewBtn" onclick="previewRootPbi()">1) Xem trước</button>
+          <button class="btn-submit" id="rootCreateBtn" onclick="createRootPbi()" disabled>2) Tạo trên Backlog →</button>
+        </div>
+
+        <div class="result" id="rootStatus"></div>
+
+        <div class="warn-box" id="rootWarnBox">
+          <b>⚠️ Warnings</b>
+          <ul id="rootWarnList"></ul>
+        </div>
+
+        <div id="rootPreviewWrap" style="display:none;">
+          <div class="section-label">Preview — nội dung sẽ tạo trên Backlog</div>
+          <div class="preview-box" id="rootPreviewBox"></div>
+        </div>
+
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -448,6 +594,7 @@ function switchTab(name) {
   document.getElementById('syncPanel').classList.toggle('active', name === 'sync');
   document.getElementById('hoursPanel').classList.toggle('active', name === 'hours');
   document.getElementById('adhocPanel').classList.toggle('active', name === 'adhoc');
+  document.getElementById('createPbiPanel').classList.toggle('active', name === 'createpbi');
 }
 
 // Parse a "YYYY-MM" value from an <input type="month">
@@ -639,9 +786,29 @@ async function backlogGet(path, params) {
 async function backlogPatch(path, formParams) {
   const key = getApiKey();
   const p = new URLSearchParams();
-  for (const [k,v] of Object.entries(formParams)) p.append(k, v);
+  for (const [k,v] of Object.entries(formParams)) {
+    if (Array.isArray(v)) v.forEach(x => p.append(k, x));
+    else if (v !== undefined && v !== null) p.append(k, v);
+  }
   const res = await fetch(`${BACKLOG_HOST}${path}?apiKey=${key}`, {
     method: 'PATCH',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: p.toString()
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.errors?.[0]?.message || `HTTP ${res.status}`);
+  return data;
+}
+
+async function backlogPost(path, formParams) {
+  const key = getApiKey();
+  const p = new URLSearchParams();
+  for (const [k,v] of Object.entries(formParams)) {
+    if (Array.isArray(v)) v.forEach(x => p.append(k, x));
+    else if (v !== undefined && v !== null) p.append(k, v);
+  }
+  const res = await fetch(`${BACKLOG_HOST}${path}?apiKey=${key}`, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: p.toString()
   });
@@ -1248,9 +1415,304 @@ ${summaryRows}
   }
 }
 
+// ══════════════════════════════════════════════════════════════════
+// CREATE ROOT PBI
+// ══════════════════════════════════════════════════════════════════
+const KOBAYASHI_ID = 567335;
+let rootPending = null; // { formParams, title }
+let rootTesterItems = null; // [{id, name}] from Backlog custom field 112331
+
+function populateRootMemberSelects() {
+  const opts = TEAM.map(m => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('');
+  ['rootRequester', 'rootOwner', 'rootTechLead', 'rootDevTester', 'rootReviewer'].forEach(id => {
+    document.getElementById(id).innerHTML = opts;
+  });
+  document.getElementById('rootOwner').value = String(KOBAYASHI_ID);
+  document.getElementById('rootTechLead').value = String(KOBAYASHI_ID);
+}
+
+let cachedVersions = null;
+async function fetchAllVersions() {
+  if (cachedVersions) return cachedVersions;
+  const versions = await backlogGet(`/api/v2/projects/${PROJECT_ID}/versions`, {});
+  cachedVersions = versions.filter(v => !v.archived);
+  return cachedVersions;
+}
+
+async function loadRootMilestones() {
+  const key = getApiKey();
+  if (!key) return showResultBox('rootStatus', 'error', '⚠️ Vui lòng nhập Backlog API key trước.');
+  try {
+    const versions = await fetchAllVersions();
+    const sorted = [...versions].sort((a,b) => a.name.localeCompare(b.name));
+    document.getElementById('rootMilestoneSelect').innerHTML =
+      '<option value="">— Chọn milestone —</option>' +
+      sorted.map(v => `<option value="${v.id}" data-name="${escapeHtml(v.name)}">${escapeHtml(v.name)}</option>`).join('');
+    showResultBox('rootStatus', 'success', `✅ Đã tải ${sorted.length} milestone.`);
+  } catch (e) {
+    showResultBox('rootStatus', 'error', `❌ Không tải được milestone: ${e.message}`);
+  }
+}
+
+async function loadTesterFieldItems() {
+  const key = getApiKey();
+  if (!key) return showResultBox('rootStatus', 'error', '⚠️ Vui lòng nhập Backlog API key trước.');
+  try {
+    const fields = await backlogGet(`/api/v2/projects/${PROJECT_ID}/customFields`, {});
+    const testerField = fields.find(f => f.id === 112331) || fields.find(f => /tester/i.test(f.name || ''));
+    if (!testerField || !testerField.items) {
+      showResultBox('rootStatus', 'error', '❌ Không tìm thấy custom field "Tester" (id 112331) trong project.');
+      return;
+    }
+    rootTesterItems = testerField.items.map(it => ({ id: it.id, name: it.name }));
+    const wrap = document.getElementById('rootTesterChecks');
+    wrap.innerHTML = rootTesterItems.map((it, i) => `
+      <label class="checkbox-chip unchecked" id="testerChip_${i}">
+        <input type="checkbox" data-idx="${i}" onchange="updateTesterChipStyle(${i})" />
+        ${escapeHtml(it.name)}
+      </label>`).join('');
+    showResultBox('rootStatus', 'success', `✅ Đã tải ${rootTesterItems.length} tester.`);
+  } catch (e) {
+    showResultBox('rootStatus', 'error', `❌ Không tải được field Tester: ${e.message}`);
+  }
+}
+function updateTesterChipStyle(i) {
+  const chip = document.getElementById('testerChip_' + i);
+  const checked = chip.querySelector('input').checked;
+  chip.classList.toggle('unchecked', !checked);
+}
+function getSelectedTesterItems() {
+  if (!rootTesterItems) return [];
+  const checks = Array.from(document.querySelectorAll('#rootTesterChecks input[type="checkbox"]'));
+  return checks.filter(c => c.checked).map(c => rootTesterItems[parseInt(c.dataset.idx, 10)]);
+}
+
+// Dịch 1 đoạn text sang tiếng Anh bằng Claude, giữ nguyên xuống dòng/bullet.
+async function translateToEnglish(text) {
+  if (!text || !text.trim()) return text;
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1000,
+      messages: [{
+        role: 'user',
+        content: `Translate the following text to natural, concise English suitable for a software project ticket. Preserve line breaks exactly (one item per line stays one item per line). Return ONLY the translated text — no preamble, no quotes, no explanation.\n\n${text}`
+      }]
+    })
+  });
+  const data = await res.json();
+  const block = (data.content || []).find(c => c.type === 'text');
+  if (!block) throw new Error('Không nhận được phản hồi dịch từ Claude.');
+  return block.text.trim();
+}
+
+function buildRootDescription({ summaryText, goalText, inScopeLines, outScopeLines, startDate, dueDate, milestoneName, milestoneId, requesterName, ownerName, techLeadName, devTesterName, reviewerName }) {
+  let scopeSection = `**In scope:**\n${inScopeLines.map(l => `- ${l}`).join('\n')}`;
+  if (outScopeLines && outScopeLines.length > 0) {
+    scopeSection += `\n\n**Out of scope:**\n${outScopeLines.map(l => `- ${l}`).join('\n')}`;
+  }
+  const milestoneLink = `[${milestoneName}](${BACKLOG_HOST}/find/${PROJECT_KEY}?condition.fixedVersionId=${milestoneId})`;
+  return `## Summary
+${summaryText}
+
+---
+
+## Goal
+${goalText}
+
+---
+
+## Scope
+
+${scopeSection}
+
+---
+
+## Timeline
+
+| | Date |
+|---|---|
+| Start | ${startDate} |
+| Due | ${dueDate} |
+| Milestone | ${milestoneLink} |
+
+---
+
+## Responsibilities
+
+| Role | Name |
+|---|---|
+| Requester | ${requesterName} |
+| Owner / PO | ${ownerName} |
+| TechLead | ${techLeadName} |
+| Developer/Tester | ${devTesterName} |
+| Reviewer | ${reviewerName} |
+
+---
+
+## Result
+_(To be filled after completion)_`;
+}
+
+function readRootForm() {
+  const name = document.getElementById('rootName').value.trim();
+  const milestoneSel = document.getElementById('rootMilestoneSelect');
+  const milestoneId = milestoneSel.value;
+  const milestoneName = milestoneId ? milestoneSel.selectedOptions[0].dataset.name : '';
+  const startDate = document.getElementById('rootStart').value;
+  const dueDate = document.getElementById('rootDue').value;
+  const categoryId = document.getElementById('rootCategory').value;
+  const summaryText = document.getElementById('rootSummaryText').value.trim();
+  const goalText = document.getElementById('rootGoalText').value.trim();
+  const inScopeLines = document.getElementById('rootInScope').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const outScopeLines = document.getElementById('rootOutScope').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const translate = document.getElementById('rootTranslateToggle').checked;
+  const requesterId = document.getElementById('rootRequester').value;
+  const ownerId = document.getElementById('rootOwner').value;
+  const techLeadId = document.getElementById('rootTechLead').value;
+  const devTesterId = document.getElementById('rootDevTester').value;
+  const reviewerId = document.getElementById('rootReviewer').value;
+  const testerItems = getSelectedTesterItems();
+  const nameOf = id => TEAM.find(m => String(m.id) === String(id))?.name || '';
+  return {
+    name, milestoneId, milestoneName, startDate, dueDate, categoryId,
+    summaryText, goalText, inScopeLines, outScopeLines, translate,
+    requesterName: nameOf(requesterId), ownerName: nameOf(ownerId), techLeadName: nameOf(techLeadId),
+    devTesterName: nameOf(devTesterId), reviewerName: nameOf(reviewerId),
+    testerItems
+  };
+}
+
+function resetRootState() {
+  rootPending = null;
+  document.getElementById('rootCreateBtn').disabled = true;
+  document.getElementById('rootPreviewWrap').style.display = 'none';
+  document.getElementById('rootWarnBox').style.display = 'none';
+  hideResultBox('rootStatus');
+}
+
+async function previewRootPbi() {
+  const key = getApiKey();
+  resetRootState();
+  const f = readRootForm();
+
+  const missing = [];
+  if (!key) missing.push('Backlog API key');
+  if (!f.name) missing.push('Tên PBI');
+  if (!f.milestoneId) missing.push('Milestone');
+  if (!f.startDate) missing.push('Start');
+  if (!f.dueDate) missing.push('Due');
+  if (!f.summaryText) missing.push('Summary');
+  if (!f.goalText) missing.push('Goal');
+  if (f.inScopeLines.length === 0) missing.push('Scope — In scope');
+  if (!f.requesterName) missing.push('Requester');
+  if (!f.devTesterName) missing.push('Developer/Tester');
+  if (!f.reviewerName) missing.push('Reviewer');
+  if (f.testerItems.length === 0) missing.push('Tester (custom field)');
+  if (missing.length > 0) return showResultBox('rootStatus', 'error', `⚠️ Thiếu: ${missing.join(', ')}.`);
+
+  const btn = document.getElementById('rootPreviewBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner-inline"></span>Đang xử lý...';
+
+  const warnings = [];
+  try {
+    let { name, summaryText, goalText, inScopeLines, outScopeLines } = f;
+
+    if (f.translate) {
+      try {
+        [name, summaryText, goalText] = await Promise.all([
+          translateToEnglish(name), translateToEnglish(summaryText), translateToEnglish(goalText)
+        ]);
+        const inJoined = inScopeLines.join('\n');
+        const outJoined = outScopeLines.join('\n');
+        const [inTranslated, outTranslated] = await Promise.all([
+          translateToEnglish(inJoined), outJoined ? translateToEnglish(outJoined) : Promise.resolve('')
+        ]);
+        inScopeLines = inTranslated.split('\n').map(s => s.trim()).filter(Boolean);
+        outScopeLines = outTranslated ? outTranslated.split('\n').map(s => s.trim()).filter(Boolean) : [];
+      } catch (e) {
+        warnings.push(`Dịch tự động thất bại (${e.message}) — đang dùng nguyên văn bạn nhập, cần tự dịch sang tiếng Anh trước khi tạo trên Backlog.`);
+      }
+    } else {
+      warnings.push('Bạn đã tắt dịch tự động — nội dung sẽ được ghi nguyên văn như bạn nhập. Backlog yêu cầu nội dung tiếng Anh, hãy tự kiểm tra lại.');
+    }
+
+    const title = `PBI - [ROOT] ${name}`;
+    const description = buildRootDescription({
+      summaryText, goalText, inScopeLines, outScopeLines,
+      startDate: f.startDate, dueDate: f.dueDate,
+      milestoneName: f.milestoneName, milestoneId: f.milestoneId,
+      requesterName: f.requesterName, ownerName: f.ownerName, techLeadName: f.techLeadName,
+      devTesterName: f.devTesterName, reviewerName: f.reviewerName
+    });
+
+    const formParams = {
+      projectId: PROJECT_ID,
+      summary: title,
+      issueTypeId: 869744,
+      priorityId: 3,
+      'categoryId[]': [f.categoryId],
+      'milestoneId[]': [f.milestoneId],
+      startDate: f.startDate,
+      dueDate: f.dueDate,
+      description,
+      'customField_112331[]': f.testerItems.map(t => t.id)
+    };
+
+    const previewMd =
+`**Summary (title):** ${escapeMd(title)}
+**Category:** ${document.getElementById('rootCategory').selectedOptions[0].textContent}
+**Milestone:** ${escapeMd(f.milestoneName)}
+**Tester (custom field):** ${f.testerItems.map(t => escapeMd(t.name)).join(', ')}
+
+--- DESCRIPTION ---
+
+${description}`;
+
+    rootPending = { formParams, title };
+    setMarkdownHtml(document.getElementById('rootPreviewBox'), previewMd);
+    document.getElementById('rootPreviewBox').style.display = 'block';
+    document.getElementById('rootPreviewWrap').style.display = 'block';
+
+    if (warnings.length > 0) {
+      document.getElementById('rootWarnList').innerHTML = warnings.map(w => `<li>${w}</li>`).join('');
+      document.getElementById('rootWarnBox').style.display = 'block';
+    }
+
+    showResultBox('rootStatus', 'info', 'Đã dựng xong preview. Kiểm tra kỹ nội dung rồi bấm "Tạo trên Backlog" nếu ổn.');
+    document.getElementById('rootCreateBtn').disabled = false;
+  } catch (e) {
+    showResultBox('rootStatus', 'error', `❌ <strong>Lỗi:</strong> ${e.message}`);
+  } finally {
+    btn.disabled = false; btn.textContent = '1) Xem trước';
+  }
+}
+
+async function createRootPbi() {
+  if (!rootPending) return;
+  const btn = document.getElementById('rootCreateBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner-inline"></span>Đang tạo...';
+  try {
+    const created = await backlogPost('/api/v2/issues', rootPending.formParams);
+    const url = `${BACKLOG_HOST}/view/${created.issueKey}`;
+    showResultBox('rootStatus', 'success', `✅ <strong>Đã tạo PBI Root!</strong><br><a href="${url}" target="_blank" rel="noopener noreferrer">${created.issueKey} — ${escapeHtml(rootPending.title)}</a>`);
+    rootPending = null;
+    document.getElementById('rootPreviewWrap').style.display = 'none';
+  } catch (e) {
+    showResultBox('rootStatus', 'error', `❌ <strong>Lỗi khi tạo:</strong> ${e.message}`);
+  } finally {
+    btn.disabled = false; btn.textContent = '2) Tạo trên Backlog →';
+  }
+}
+
+document.getElementById('rootMilestoneSelect').addEventListener('change', resetRootState);
+
 renderMonths();
 renderMemberChecks();
 renderAdhocMonths();
+populateRootMemberSelects();
 </script>
 </body>
 </html>
