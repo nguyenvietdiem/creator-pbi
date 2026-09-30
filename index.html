@@ -262,21 +262,31 @@
     <!-- SYNC RESULT -->
     <div id="syncPanel" class="panel active">
       <div class="panel-head">
-        <h2>🔄 Sync Result cho Root PBI</h2>
-        <p>Tính lại Est/Act hours theo tháng (có prorate cho Child PBI, cộng dồn cho Subtask) trong phạm vi <b>milestone dự án</b> của Root — không phải milestone tháng — rồi cập nhật mục <code>## Result</code> lên Backlog. Không đụng tới các phần khác của description.</p>
+        <h2>🔄 Sync Result cho Epic / Root PBI</h2>
+        <p>Tính lại Est/Act hours theo tháng (có prorate cho Child PBI, cộng dồn cho Subtask) rồi cập nhật mục <code>## Result</code> lên Backlog. Hai chế độ: <b>Epic</b> lấy toàn bộ PBI con và subtask theo cây parent (Epic &gt; PBI &gt; Subtask), không dùng milestone; <b>Root</b> (PBI cha kiểu cũ) lấy theo <b>milestone dự án</b>, không phải milestone tháng. Không đụng tới các phần khác của description.</p>
       </div>
 
       <div class="form-body narrow">
 
         <div class="field">
-          <label>Root PBI key <span class="req">*</span></label>
-          <input type="text" id="rootKey" placeholder="DEV_MIERUCA_HEAT_OPT-7715" />
+          <label>Epic / Root PBI key <span class="req">*</span></label>
+          <input type="text" id="rootKey" placeholder="DEV_MIERUCA_HEAT_OPT-8544" />
         </div>
 
         <div class="field">
-          <label>Milestone dự án (tùy chọn)</label>
+          <label>Chế độ sync</label>
+          <select id="syncMode" onchange="onSyncModeChange()">
+            <option value="auto">Tự nhận diện (Epic hoặc Root)</option>
+            <option value="epic">Epic (theo cây parent, 3 cấp)</option>
+            <option value="root">Root (theo milestone dự án)</option>
+          </select>
+          <span class="hint-text">Tự nhận diện: issue type là Epic hoặc summary bắt đầu bằng "Epic" thì chạy Epic mode; summary chứa "[ROOT]" thì chạy Root mode.</span>
+        </div>
+
+        <div class="field" id="milestoneField">
+          <label>Milestone dự án (tùy chọn, chỉ dùng cho Root)</label>
           <input type="text" id="milestoneOverride" placeholder="Để trống = tự nhận diện. VD: 523565" />
-          <span class="hint-text">Root thường có 2 milestone: 1 milestone tháng (VD "2026-Jul", dùng cho Hours Report) và 1 milestone dự án (VD "Refactor optimizer"). Tool tự chọn milestone không phải dạng tháng — nếu chọn sai hoặc Root có nhiều milestone dự án, nhập ID đúng vào đây (lấy từ URL <code>condition.fixedVersionId=</code>).</span>
+          <span class="hint-text">Root thường có 2 milestone: 1 milestone tháng (VD "2026-Jul", dùng cho Hours Report) và 1 milestone dự án (VD "Refactor optimizer"). Tool tự chọn milestone không phải dạng tháng. Nếu chọn sai hoặc Root có nhiều milestone dự án, nhập ID đúng vào đây (lấy từ URL <code>condition.fixedVersionId=</code>).</span>
         </div>
 
         <div class="field">
@@ -761,6 +771,12 @@ function resetSyncState() {
   document.getElementById('scopeWrap').style.display = 'none';
   hideStatus();
 }
+function onSyncModeChange() {
+  const mode = document.getElementById('syncMode').value;
+  // Epic mode lấy theo cây parent nên không cần milestone dự án
+  document.getElementById('milestoneField').style.display = mode === 'epic' ? 'none' : '';
+  resetSyncState();
+}
 document.getElementById('rootKey').addEventListener('input', resetSyncState);
 document.getElementById('milestoneOverride').addEventListener('input', resetSyncState);
 
@@ -856,6 +872,37 @@ async function verifyFetchCount(scopeParams, actualLength, label) {
     // count endpoint unreachable/unsupported — not fatal, just skip the cross-check
   }
   return null;
+}
+
+// ── Epic mode helpers ───────────────────────────────────────────────
+// Nhận diện chế độ sync từ issue gốc
+function detectSyncMode(issue) {
+  const typeName = issue.issueType?.name || '';
+  const summary = issue.summary || '';
+  if (/epic/i.test(typeName) || /^\s*(PBI\s*-\s*)?Epic\b/i.test(summary)) return 'epic';
+  if (summary.includes('[ROOT]')) return 'root';
+  return null;
+}
+
+// Lấy toàn bộ cây con của Epic: Epic > PBI con > Subtask (qua parentIssueId[])
+async function fetchEpicTree(epic) {
+  const warnings = [];
+
+  const pbis = await fetchAllIssues({ parentIssueId: [epic.id] });
+  const w1 = await verifyFetchCount({ parentIssueId: [epic.id] }, pbis.length, 'PBI con của Epic');
+  if (w1) warnings.push(w1);
+
+  const subtasks = [];
+  const CHUNK = 40; // tránh URL quá dài
+  for (let i = 0; i < pbis.length; i += CHUNK) {
+    const ids = pbis.slice(i, i + CHUNK).map(p => p.id);
+    const part = await fetchAllIssues({ parentIssueId: ids });
+    const w2 = await verifyFetchCount({ parentIssueId: ids }, part.length, `Subtask của PBI (nhóm ${Math.floor(i / CHUNK) + 1})`);
+    if (w2) warnings.push(w2);
+    subtasks.push(...part);
+  }
+
+  return { pbis, subtasks, all: [...pbis, ...subtasks], warnings };
 }
 
 function renderMemberChecks() {
@@ -1069,13 +1116,45 @@ async function calcMonth(scopeParams, year, month) {
   [...setA, ...setB, ...setC].forEach(i => map.set(i.id, i));
   const merged = Array.from(map.values()).filter(i => !(i.summary || '').includes('[ROOT]'));
 
-  const warnings = [...paginationWarnings];
+  return aggregateMonth(merged, year, month, paginationWarnings);
+}
+
+// Epic mode: đã có sẵn toàn bộ cây nên chỉ cần lọc overlap trong JS.
+// Điều kiện lọc giống hệt Fetch A + B + C của calcMonth.
+function issueTouchesMonth(issue, monthStart, monthEnd) {
+  const s = issue.startDate ? issue.startDate.slice(0, 10) : null;
+  const d = issue.dueDate ? issue.dueDate.slice(0, 10) : null;
+  const startIn = s && s >= monthStart && s <= monthEnd;
+  const dueIn = d && d >= monthStart && d <= monthEnd;
+  const spans = s && d && s <= monthStart && d >= monthEnd;
+  return Boolean(startIn || dueIn || spans);
+}
+
+async function calcMonthFromTree(treeIssues, epicId, year, month) {
+  const monthStart = `${year}-${pad2(month)}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const monthEnd = `${year}-${pad2(month)}-${pad2(lastDay)}`;
+  const inMonth = treeIssues.filter(i => issueTouchesMonth(i, monthStart, monthEnd));
+  // Depth 1 (parent = Epic) là PBI, depth 2 là Subtask
+  const isSubtask = i => i.parentIssueId !== epicId;
+  return aggregateMonth(inMonth, year, month, [], isSubtask);
+}
+
+// Phần tính Est/Act dùng chung cho Root mode, Epic mode, Hours tab, Ad-hoc tab.
+// isSubtaskFn mặc định: có parentIssueId thì là Subtask (logic cũ).
+async function aggregateMonth(merged, year, month, initialWarnings, isSubtaskFn) {
+  const isSubtaskOf = isSubtaskFn || (i => i.parentIssueId != null);
+  const monthStart = `${year}-${pad2(month)}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const monthEnd = `${year}-${pad2(month)}-${pad2(lastDay)}`;
+
+  const warnings = [...(initialWarnings || [])];
   const groups = {}; // type -> {est, act, count}
   const issuesDetail = []; // per-issue rows for listing/review
   let estMonth = 0, actMonth = 0, childCount = 0, subCount = 0;
 
   for (const issue of merged) {
-    const isSubtask = issue.parentIssueId != null;
+    const isSubtask = isSubtaskOf(issue);
     let est = issue.estimatedHours;
     let act = issue.actualHours;
     if (typeof est === 'undefined' || typeof act === 'undefined') {
@@ -1175,12 +1254,13 @@ function parseExistingBlocks(description) {
   return blocks;
 }
 
-// ── Main sync flow ──────────────────────────────────────────────────
+// ── Main sync flow (Epic mode + Root mode) ──────────────────────────
 async function runSync() {
   const key = getApiKey();
   const rootKey = document.getElementById('rootKey').value.trim();
+  const modeChoice = document.getElementById('syncMode').value; // auto | epic | root
   if (!key) return showStatus('error', '⚠️ Vui lòng nhập Backlog API key.');
-  if (!rootKey) return showStatus('error', '⚠️ Vui lòng nhập Root PBI key.');
+  if (!rootKey) return showStatus('error', '⚠️ Vui lòng nhập Epic / Root PBI key.');
   if (months.length === 0) return showStatus('error', '⚠️ Vui lòng chọn ít nhất 1 tháng cần sync.');
 
   resetSyncState();
@@ -1189,54 +1269,96 @@ async function runSync() {
 
   try {
     const root = await backlogGet(`/api/v2/issues/${rootKey}`, {});
-    if (!(root.summary || '').includes('[ROOT]')) {
-      throw new Error(`"${rootKey}" không phải Root PBI (summary không chứa "[ROOT]").`);
-    }
-    if (!root.milestone || root.milestone.length === 0) {
-      throw new Error(`Root PBI ${rootKey} chưa gắn milestone.`);
-    }
 
-    const override = document.getElementById('milestoneOverride').value.trim();
-    let milestoneId, milestoneName, milestoneSource;
-    if (override) {
-      milestoneId = override;
-      const found = root.milestone.find(m => String(m.id) === String(override));
-      milestoneName = found ? found.name : `#${override}`;
-      milestoneSource = 'nhập thủ công';
-    } else {
-      const projectMilestones = root.milestone.filter(m => !MONTHLY_MILESTONE_RE.test(m.name));
-      if (projectMilestones.length === 1) {
-        milestoneId = projectMilestones[0].id;
-        milestoneName = projectMilestones[0].name;
-        milestoneSource = 'tự nhận diện';
-      } else if (projectMilestones.length === 0) {
+    // ── Xác định chế độ ──
+    let mode;
+    if (modeChoice === 'auto') {
+      mode = detectSyncMode(root);
+      if (!mode) {
         throw new Error(
-          `Root PBI ${rootKey} chỉ có milestone dạng tháng (${root.milestone.map(m => m.name).join(', ')}), ` +
-          `không tìm được milestone dự án. Vui lòng nhập Milestone ID thủ công ở ô "Milestone dự án".`
-        );
-      } else {
-        throw new Error(
-          `Root PBI ${rootKey} có nhiều milestone không phải dạng tháng: ` +
-          `${projectMilestones.map(m => `${m.name} (#${m.id})`).join(', ')}. ` +
-          `Vui lòng nhập đúng Milestone ID vào ô "Milestone dự án" để chọn 1 trong số này.`
+          `Không nhận diện được "${rootKey}" là Epic hay Root (issue type không phải Epic, summary không bắt đầu bằng "Epic" và không chứa "[ROOT]"). Hãy chọn chế độ thủ công.`
         );
       }
+    } else {
+      mode = modeChoice;
+      if (mode === 'root' && !(root.summary || '').includes('[ROOT]')) {
+        throw new Error(`"${rootKey}" không phải Root PBI (summary không chứa "[ROOT]").`);
+      }
     }
-    const plannedDue = root.dueDate ? root.dueDate.slice(0,10) : null;
 
+    const plannedDue = root.dueDate ? root.dueDate.slice(0,10) : null;
     const monthResults = [];
     const scopeLines = [];
-    for (const mo of months) {
-      const mr = await calcMonth({ milestoneId: [milestoneId] }, mo.year, mo.month);
-      monthResults.push(mr);
-      scopeLines.push(`<b>${monthLabel(mo.year, mo.month)}</b>: ${mr.issueCount} issues (Child PBIs: ${mr.childCount}, Subtasks: ${mr.subCount})`);
+    const extraWarnings = [];
+    let scopeHeader, childPBIs;
+
+    if (mode === 'epic') {
+      // ── EPIC MODE: phạm vi theo cây parent ──
+      const tree = await fetchEpicTree(root);
+      extraWarnings.push(...tree.warnings);
+
+      for (const mo of months) {
+        const mr = await calcMonthFromTree(tree.all, root.id, mo.year, mo.month);
+        monthResults.push(mr);
+        scopeLines.push(`<b>${monthLabel(mo.year, mo.month)}</b>: ${mr.issueCount} issues (Child PBIs: ${mr.childCount}, Subtasks: ${mr.subCount})`);
+      }
+
+      childPBIs = tree.pbis;
+      scopeHeader =
+        `Epic: <b>${escapeHtml(root.summary)}</b> (${root.issueKey})<br>` +
+        `Chế độ: <b>Epic</b> (theo cây parent) <span class="hint-text">[${modeChoice === 'auto' ? 'tự nhận diện' : 'chọn thủ công'}]</span><br>` +
+        `Toàn cây: ${tree.pbis.length} PBI con, ${tree.subtasks.length} subtask<br>`;
+    } else {
+      // ── ROOT MODE: phạm vi theo milestone dự án (logic cũ) ──
+      if (!root.milestone || root.milestone.length === 0) {
+        throw new Error(`Root PBI ${rootKey} chưa gắn milestone.`);
+      }
+
+      const override = document.getElementById('milestoneOverride').value.trim();
+      let milestoneId, milestoneName, milestoneSource;
+      if (override) {
+        milestoneId = override;
+        const found = root.milestone.find(m => String(m.id) === String(override));
+        milestoneName = found ? found.name : `#${override}`;
+        milestoneSource = 'nhập thủ công';
+      } else {
+        const projectMilestones = root.milestone.filter(m => !MONTHLY_MILESTONE_RE.test(m.name));
+        if (projectMilestones.length === 1) {
+          milestoneId = projectMilestones[0].id;
+          milestoneName = projectMilestones[0].name;
+          milestoneSource = 'tự nhận diện';
+        } else if (projectMilestones.length === 0) {
+          throw new Error(
+            `Root PBI ${rootKey} chỉ có milestone dạng tháng (${root.milestone.map(m => m.name).join(', ')}), ` +
+            `không tìm được milestone dự án. Vui lòng nhập Milestone ID thủ công ở ô "Milestone dự án".`
+          );
+        } else {
+          throw new Error(
+            `Root PBI ${rootKey} có nhiều milestone không phải dạng tháng: ` +
+            `${projectMilestones.map(m => `${m.name} (#${m.id})`).join(', ')}. ` +
+            `Vui lòng nhập đúng Milestone ID vào ô "Milestone dự án" để chọn 1 trong số này.`
+          );
+        }
+      }
+
+      for (const mo of months) {
+        const mr = await calcMonth({ milestoneId: [milestoneId] }, mo.year, mo.month);
+        monthResults.push(mr);
+        scopeLines.push(`<b>${monthLabel(mo.year, mo.month)}</b>: ${mr.issueCount} issues (Child PBIs: ${mr.childCount}, Subtasks: ${mr.subCount})`);
+      }
+
+      // All issues in the whole milestone (for completion-date check), no date filter
+      const allMilestoneIssues = await fetchAllIssues({ milestoneId: [milestoneId] });
+      const wholeMilestoneWarning = await verifyFetchCount({ milestoneId: [milestoneId] }, allMilestoneIssues.length, `Toàn bộ milestone dự án (${milestoneName})`);
+      if (wholeMilestoneWarning) extraWarnings.push(wholeMilestoneWarning);
+      childPBIs = allMilestoneIssues.filter(i => i.parentIssueId == null && !(i.summary || '').includes('[ROOT]'));
+
+      scopeHeader =
+        `Root: <b>${escapeHtml(root.summary)}</b> (${root.issueKey})<br>` +
+        `Milestone dự án: <b>${escapeHtml(milestoneName)}</b> (#${milestoneId}) <span class="hint-text">[${milestoneSource}]</span><br>`;
     }
 
-    // All issues in the whole milestone (for completion-date check), no date filter
-    const allMilestoneIssues = await fetchAllIssues({ milestoneId: [milestoneId] });
-    const wholeMilestoneWarning = await verifyFetchCount({ milestoneId: [milestoneId] }, allMilestoneIssues.length, `Toàn bộ milestone dự án (${milestoneName})`);
-    const childPBIs = allMilestoneIssues.filter(i => i.parentIssueId == null && !(i.summary || '').includes('[ROOT]'));
-
+    // ── Completion date + schedule variance (dùng chung cho cả 2 chế độ) ──
     let completionDate, scheduleVariance;
     const notClosed = childPBIs.find(i => (i.status?.name) !== 'Closed');
     if (childPBIs.length > 0 && !notClosed) {
@@ -1251,7 +1373,7 @@ async function runSync() {
         scheduleVariance = '⚠️ TBD';
       }
     } else if (notClosed) {
-      completionDate = `In progress (${notClosed.issueKey} — ${notClosed.summary} not yet Closed)`;
+      completionDate = `In progress (${notClosed.issueKey} - ${notClosed.summary} not yet Closed)`;
       scheduleVariance = '⚠️ TBD';
     } else {
       completionDate = 'N/A';
@@ -1282,28 +1404,24 @@ async function runSync() {
 
 | | Planned | Actual |
 |---|---|---|
-| Completion date | ${plannedDue || '—'} | ${completionDate} |
-| Schedule variance | — | ${scheduleVariance} |
+| Completion date | ${plannedDue || '-'} | ${completionDate} |
+| Schedule variance | - | ${scheduleVariance} |
 | Total hours (all months) | ${fmtHrs(grandTotalEst)}h | ${fmtHrs(grandTotalAct)}h |
-| Hour variance | — | ${varSign}${fmtHrs(hourVariance)}h (${pctSign}${hourVariancePct}%) ${flag} |
+| Hour variance | - | ${varSign}${fmtHrs(hourVariance)}h (${pctSign}${hourVariancePct}%) ${flag} |
 
 ${allBlocks.map(b => b.raw).join('\n\n')}`;
 
     // Warnings across all months + note for months with no issues in scope
-    const allWarnings = [];
-    if (wholeMilestoneWarning) allWarnings.push(wholeMilestoneWarning);
+    const allWarnings = [...extraWarnings];
     monthResults.forEach(mr => {
-      if (mr.issueCount === 0) allWarnings.push(`${monthLabel(mr.year, mr.month)}: no issues in scope for this month — breakdown block skipped.`);
+      if (mr.issueCount === 0) allWarnings.push(`${monthLabel(mr.year, mr.month)}: no issues in scope for this month, breakdown block skipped.`);
       allWarnings.push(...mr.warnings);
     });
 
-    pending = { root, resultSection, milestoneName };
+    pending = { root, resultSection, mode };
 
     // Render UI
-    document.getElementById('scopeLine').innerHTML =
-      `Root: <b>${root.summary}</b> (${root.issueKey})<br>` +
-      `Milestone dự án: <b>${milestoneName}</b> (#${milestoneId}) <span class="hint-text">[${milestoneSource}]</span><br>` +
-      scopeLines.join('<br>');
+    document.getElementById('scopeLine').innerHTML = scopeHeader + scopeLines.join('<br>');
     document.getElementById('scopeWrap').style.display = 'block';
 
     if (allWarnings.length > 0) {
