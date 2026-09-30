@@ -278,9 +278,10 @@
           <select id="syncMode" onchange="onSyncModeChange()">
             <option value="auto">Tự nhận diện (Epic hoặc Root)</option>
             <option value="epic">Epic (theo cây parent, 3 cấp)</option>
+            <option value="pbi">PBI đơn lẻ (PBI + subtask của nó)</option>
             <option value="root">Root (theo milestone dự án)</option>
           </select>
-          <span class="hint-text">Tự nhận diện: issue type là Epic hoặc summary bắt đầu bằng "Epic" thì chạy Epic mode; summary chứa "[ROOT]" thì chạy Root mode.</span>
+          <span class="hint-text">Tự nhận diện: Epic (issue type Epic hoặc summary bắt đầu bằng "Epic"), Root (summary chứa "[ROOT]"), còn lại nếu issue không có parent thì coi là PBI đơn lẻ và tính PBI đó cùng các subtask của nó.</span>
         </div>
 
         <div class="field" id="milestoneField">
@@ -779,8 +780,8 @@ function resetSyncState() {
 }
 function onSyncModeChange() {
   const mode = document.getElementById('syncMode').value;
-  // Epic mode lấy theo cây parent nên không cần milestone dự án
-  document.getElementById('milestoneField').style.display = mode === 'epic' ? 'none' : '';
+  // Epic và PBI đơn lẻ lấy theo cây parent nên không cần milestone dự án
+  document.getElementById('milestoneField').style.display = (mode === 'epic' || mode === 'pbi') ? 'none' : '';
   resetSyncState();
 }
 document.getElementById('rootKey').addEventListener('input', resetSyncState);
@@ -887,7 +888,18 @@ function detectSyncMode(issue) {
   const summary = issue.summary || '';
   if (/epic/i.test(typeName) || /^\s*(PBI\s*-\s*)?Epic\b/i.test(summary)) return 'epic';
   if (summary.includes('[ROOT]')) return 'root';
+  // Không phải Epic/Root, không có parent: PBI đơn lẻ (tính chính nó + subtask của nó)
+  if (issue.parentIssueId == null) return 'pbi';
   return null;
+}
+
+// PBI đơn lẻ: chính PBI (depth 0) + các subtask trực tiếp của nó
+async function fetchSinglePbiTree(pbi) {
+  const warnings = [];
+  const subtasks = await fetchAllIssues({ parentIssueId: [pbi.id] });
+  const w = await verifyFetchCount({ parentIssueId: [pbi.id] }, subtasks.length, 'Subtask của PBI');
+  if (w) warnings.push(w);
+  return { pbis: [pbi], subtasks, all: [pbi, ...subtasks], warnings };
 }
 
 // Lấy toàn bộ cây con của Epic: Epic > PBI con > Subtask (qua parentIssueId[])
@@ -1136,14 +1148,15 @@ function issueTouchesMonth(issue, monthStart, monthEnd) {
   return Boolean(startIn || dueIn || spans);
 }
 
-async function calcMonthFromTree(treeIssues, epicId, year, month) {
+// isSubtaskFn quyết định issue nào tính là Subtask (full giờ), còn lại là PBI (prorate):
+//  - Epic mode: subtask là issue có parent khác Epic
+//  - PBI đơn lẻ: subtask là mọi issue khác chính PBI đó
+async function calcMonthFromTree(treeIssues, isSubtaskFn, year, month) {
   const monthStart = `${year}-${pad2(month)}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const monthEnd = `${year}-${pad2(month)}-${pad2(lastDay)}`;
   const inMonth = treeIssues.filter(i => issueTouchesMonth(i, monthStart, monthEnd));
-  // Depth 1 (parent = Epic) là PBI, depth 2 là Subtask
-  const isSubtask = i => i.parentIssueId !== epicId;
-  return aggregateMonth(inMonth, year, month, [], isSubtask);
+  return aggregateMonth(inMonth, year, month, [], isSubtaskFn);
 }
 
 // Phần tính Est/Act dùng chung cho Root mode, Epic mode, Hours tab, Ad-hoc tab.
@@ -1298,7 +1311,7 @@ async function runSync() {
       mode = detectSyncMode(root);
       if (!mode) {
         throw new Error(
-          `Không nhận diện được "${rootKey}" là Epic hay Root (issue type không phải Epic, summary không bắt đầu bằng "Epic" và không chứa "[ROOT]"). Hãy chọn chế độ thủ công.`
+          `"${rootKey}" là subtask (có parent) nên không sync riêng được. Hãy nhập key của PBI hoặc Epic chứa nó.`
         );
       }
     } else {
@@ -1320,7 +1333,7 @@ async function runSync() {
       extraWarnings.push(...tree.warnings);
 
       for (const mo of months) {
-        const mr = await calcMonthFromTree(tree.all, root.id, mo.year, mo.month);
+        const mr = await calcMonthFromTree(tree.all, i => i.parentIssueId !== root.id, mo.year, mo.month);
         monthResults.push(mr);
         scopeLines.push(`<b>${monthLabel(mo.year, mo.month)}</b>: ${mr.issueCount} issues (Child PBIs: ${mr.childCount}, Subtasks: ${mr.subCount})`);
       }
@@ -1330,6 +1343,25 @@ async function runSync() {
         `Epic: <b>${escapeHtml(root.summary)}</b> (${root.issueKey})<br>` +
         `Chế độ: <b>Epic</b> (theo cây parent) <span class="hint-text">[${modeChoice === 'auto' ? 'tự nhận diện' : 'chọn thủ công'}]</span><br>` +
         `Toàn cây: ${tree.pbis.length} PBI con, ${tree.subtasks.length} subtask<br>`;
+    } else if (mode === 'pbi') {
+      // ── PBI ĐƠN LẺ: chính PBI này + subtask trực tiếp của nó ──
+      if (root.parentIssueId != null) {
+        throw new Error(`"${rootKey}" là subtask (có parent). Hãy nhập key của PBI hoặc Epic chứa nó.`);
+      }
+      const tree = await fetchSinglePbiTree(root);
+      extraWarnings.push(...tree.warnings);
+
+      for (const mo of months) {
+        const mr = await calcMonthFromTree(tree.all, i => i.id !== root.id, mo.year, mo.month);
+        monthResults.push(mr);
+        scopeLines.push(`<b>${monthLabel(mo.year, mo.month)}</b>: ${mr.issueCount} issues (PBI: ${mr.childCount}, Subtasks: ${mr.subCount})`);
+      }
+
+      childPBIs = tree.pbis; // chỉ có chính PBI này
+      scopeHeader =
+        `PBI: <b>${escapeHtml(root.summary)}</b> (${root.issueKey})<br>` +
+        `Chế độ: <b>PBI đơn lẻ</b> (PBI + subtask của nó) <span class="hint-text">[${modeChoice === 'auto' ? 'tự nhận diện' : 'chọn thủ công'}]</span><br>` +
+        `Toàn cây: 1 PBI, ${tree.subtasks.length} subtask<br>`;
     } else {
       // ── ROOT MODE: phạm vi theo milestone dự án (logic cũ) ──
       if (!root.milestone || root.milestone.length === 0) {
@@ -1455,8 +1487,14 @@ ${allBlocks.map(b => b.raw).join('\n\n')}`;
     document.getElementById('resultPreview').style.display = 'block';
     document.getElementById('previewWrap').style.display = 'block';
 
-    showStatus('info', 'Đã tính toán xong. Kiểm tra preview rồi bấm "Cập nhật lên Backlog" nếu ổn.');
-    document.getElementById('updateBtn').disabled = false;
+    if (mode === 'pbi') {
+      // PBI đơn lẻ chỉ để xem số liệu, không ghi lên Backlog
+      showStatus('success', '✅ Đã tính xong (chế độ chỉ xem, không ghi gì lên Backlog).');
+      document.getElementById('updateBtn').disabled = true;
+    } else {
+      showStatus('info', 'Đã tính toán xong. Kiểm tra preview rồi bấm "Cập nhật lên Backlog" nếu ổn.');
+      document.getElementById('updateBtn').disabled = false;
+    }
 
   } catch (e) {
     showStatus('error', `❌ <strong>Lỗi:</strong> ${e.message}`);
