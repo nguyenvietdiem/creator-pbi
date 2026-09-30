@@ -591,8 +591,14 @@ const TEAM = [
   { name: 'Nguyễn Lê Minh',          id: 542390 },
   { name: 'Phạm Minh Luân',          id: 542388 },
   { name: 'Trần Minh Khôi',          id: 647002 },
+];
+
+// Thành viên người Nhật: không nằm trong TEAM (Hours report chỉ tính người Việt),
+// nhưng vẫn cần hiện ở tab Tạo PBI Root vì Owner/PO và TechLead mặc định là Kobayashi.
+const JP_MEMBERS = [
   { name: 'Kota Kobayashi',          id: 567335 },
 ];
+const ROOT_PBI_MEMBERS = [...TEAM, ...JP_MEMBERS];
 
 let months = []; // [{year, month}] — Sync tab
 let adhocMonths = []; // [{year, month}] — Ad-hoc tab
@@ -1142,13 +1148,29 @@ async function calcMonthFromTree(treeIssues, epicId, year, month) {
 
 // Phần tính Est/Act dùng chung cho Root mode, Epic mode, Hours tab, Ad-hoc tab.
 // isSubtaskFn mặc định: có parentIssueId thì là Subtask (logic cũ).
-async function aggregateMonth(merged, year, month, initialWarnings, isSubtaskFn) {
+async function aggregateMonth(allIssues, year, month, initialWarnings, isSubtaskFn) {
   const isSubtaskOf = isSubtaskFn || (i => i.parentIssueId != null);
   const monthStart = `${year}-${pad2(month)}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const monthEnd = `${year}-${pad2(month)}-${pad2(lastDay)}`;
 
   const warnings = [...(initialWarnings || [])];
+
+  // Chỉ tính issue có assignee thuộc TEAM (7 người Việt). Issue gán cho người Nhật
+  // (kể cả subtask Review) hoặc chưa assign sẽ bị bỏ qua, có ghi chú trong Warnings.
+  const teamIds = new Set(TEAM.map(m => m.id));
+  const merged = allIssues.filter(i => i.assignee && teamIds.has(i.assignee.id));
+  const skippedIssues = allIssues.filter(i => !(i.assignee && teamIds.has(i.assignee.id)));
+  if (skippedIssues.length > 0) {
+    const byAssignee = {};
+    skippedIssues.forEach(i => {
+      const n = i.assignee?.name || 'Chưa assign';
+      byAssignee[n] = (byAssignee[n] || 0) + 1;
+    });
+    const detail = Object.entries(byAssignee).map(([n, c]) => `${n}: ${c}`).join(', ');
+    warnings.push(`Đã bỏ qua ${skippedIssues.length} issue không thuộc 7 người Việt (${detail})`);
+  }
+
   const groups = {}; // type -> {est, act, count}
   const issuesDetail = []; // per-issue rows for listing/review
   let estMonth = 0, actMonth = 0, childCount = 0, subCount = 0;
@@ -1541,7 +1563,7 @@ let rootPending = null; // { formParams, title }
 let rootTesterItems = null; // [{id, name}] from Backlog custom field 112331
 
 function populateRootMemberSelects() {
-  const opts = TEAM.map(m => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('');
+  const opts = ROOT_PBI_MEMBERS.map(m => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join('');
   ['rootRequester', 'rootOwner', 'rootTechLead', 'rootDevTester', 'rootReviewer'].forEach(id => {
     document.getElementById(id).innerHTML = opts;
   });
@@ -1693,7 +1715,7 @@ function readRootForm() {
   const devTesterId = document.getElementById('rootDevTester').value;
   const reviewerId = document.getElementById('rootReviewer').value;
   const testerItems = getSelectedTesterItems();
-  const nameOf = id => TEAM.find(m => String(m.id) === String(id))?.name || '';
+  const nameOf = id => ROOT_PBI_MEMBERS.find(m => String(m.id) === String(id))?.name || '';
   return {
     name, milestoneId, milestoneName, startDate, dueDate, categoryId,
     summaryText, goalText, inScopeLines, outScopeLines, translate,
