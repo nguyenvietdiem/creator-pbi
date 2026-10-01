@@ -356,6 +356,11 @@
         </div>
         <span class="hint-text">Định mức giờ làm = (số ngày t2 tới t6 trong tháng − số ngày nghỉ) × giờ làm/ngày. Áp dụng chung cho tất cả người được chọn.</span>
 
+        <div class="toggle-row">
+          <input type="checkbox" id="skipParentHours" checked />
+          <label style="text-transform:none; font-weight:500; letter-spacing:0;">Bỏ giờ của PBI nếu PBI đó đã có subtask (tránh tính trùng Est/Act giữa PBI và subtask)</label>
+        </div>
+
         <div class="field">
           <label>Thành viên <span class="req">*</span></label>
           <div class="checkbox-grid" id="hoursMemberChecks"></div>
@@ -1026,7 +1031,7 @@ async function runHoursReport() {
 |---|---|
 | ✅ Total Actual | ${fmtHrs(r.actMonth)}h |
 | 📋 Total Estimated | ${fmtHrs(r.estMonth)}h |
-| 📈 Variance | ${varStr} |${projectTableMd(r)}`;
+| 📈 Variance | ${varStr} |${typeSummaryMd(r.typeGroups, 'Tổng hợp theo loại task')}${projectTableMd(r)}`;
 
       setMarkdownHtml(document.getElementById('hoursResult'), md);
       document.getElementById('hoursResult').style.display = 'block';
@@ -1106,7 +1111,7 @@ async function runHoursReport() {
 | Member | Issues | Est | Act | Variance | % Định mức |
 |---|---|---|---|---|---|
 ${rows}
-| **TOTAL** |  | **${fmtHrs(teamEst)}h** | **${fmtHrs(teamAct)}h** | **${teamVar >= 0 ? '+' : ''}${fmtHrs(teamVar)}h** | ${teamCapacity > 0 ? Math.round(teamAct/teamCapacity*100) : 'N/A'}% |${(() => { const d = results.find(x => x.perProject); return d ? projectTableMd(d, `${d.member.name}, chi tiết theo project`) : ''; })()}`;
+| **TOTAL** |  | **${fmtHrs(teamEst)}h** | **${fmtHrs(teamAct)}h** | **${teamVar >= 0 ? '+' : ''}${fmtHrs(teamVar)}h** | ${teamCapacity > 0 ? Math.round(teamAct/teamCapacity*100) : 'N/A'}% |${typeSummaryMd(normalizeGroups(results.map(r => r.typeGroups)), `Tổng hợp theo loại task (${results.length} thành viên đã chọn)`)}${(() => { const d = results.find(x => x.perProject); return d ? projectTableMd(d, `${d.member.name}, chi tiết theo project`) : ''; })()}`;
 
       setMarkdownHtml(document.getElementById('hoursResult'), md);
       document.getElementById('hoursResult').style.display = 'block';
@@ -1155,7 +1160,25 @@ async function calcMonth(scopeParams, year, month, opts = {}) {
   const merged = Array.from(map.values()).filter(i => !(i.summary || '').includes('[ROOT]'));
 
   const isSubtaskFn = opts.resolveEpicParents ? await buildIsSubtaskFn(merged) : undefined;
-  return aggregateMonth(merged, year, month, paginationWarnings, isSubtaskFn);
+  let skipHoursIds;
+  if (opts.skipParentsWithChildren) {
+    skipHoursIds = await findIssuesWithChildren(merged, isSubtaskFn || (i => i.parentIssueId != null));
+  }
+  return aggregateMonth(merged, year, month, paginationWarnings, isSubtaskFn, skipHoursIds);
+}
+
+// Tìm các issue cấp PBI (không phải subtask) đang có issue con, bất kể con đó giao cho ai.
+// Giờ của PBI thường là ước lượng cho cả khối việc mà các subtask con đã chia nhỏ ra,
+// nên cộng cả hai sẽ bị tính trùng.
+async function findIssuesWithChildren(issues, isSubtaskFn) {
+  const candidateIds = issues.filter(i => !isSubtaskFn(i)).map(i => i.id);
+  const withChildren = new Set();
+  const CHUNK = 50;
+  for (let i = 0; i < candidateIds.length; i += CHUNK) {
+    const children = await fetchAllIssues({ projectId: undefined, parentIssueId: candidateIds.slice(i, i + CHUNK) });
+    children.forEach(c => { if (c.parentIssueId != null) withChildren.add(c.parentIssueId); });
+  }
+  return withChildren;
 }
 
 // Ở project có 3 cấp (Epic > PBI > Subtask), PBI dưới Epic cũng có parentIssueId nên không thể
@@ -1175,17 +1198,26 @@ async function buildIsSubtaskFn(issues) {
   return issue => issue.parentIssueId != null && !epicIds.has(issue.parentIssueId);
 }
 
+function hoursCalcOpts() {
+  return {
+    resolveEpicParents: true,
+    skipParentsWithChildren: !!document.getElementById('skipParentHours')?.checked
+  };
+}
+
 // Tính giờ 1 thành viên trong tháng. Riêng Diêm: tính từng project được chọn rồi gộp lại,
 // giữ kết quả riêng từng project trong r.perProject.
 async function calcMemberMonth(member, year, month) {
   if (member.id !== DIEM_ID) {
-    return calcMonth({ assigneeId: [member.id] }, year, month, { resolveEpicParents: true });
+    const r = await calcMonth({ assigneeId: [member.id] }, year, month, hoursCalcOpts());
+    r.typeGroups = normalizeGroups([r.groups]);
+    return r;
   }
   const selected = getSelectedDiemProjects();
   const projects = selected.length > 0 ? selected : [DIEM_PROJECTS[0]];
   const perProject = [];
   for (const p of projects) {
-    const r = await calcMonth({ assigneeId: [member.id], projectId: [p.id] }, year, month, { resolveEpicParents: true });
+    const r = await calcMonth({ assigneeId: [member.id], projectId: [p.id] }, year, month, hoursCalcOpts());
     perProject.push({ project: p, ...r });
   }
   const sum = f => perProject.reduce((s, r) => s + r[f], 0);
@@ -1195,6 +1227,7 @@ async function calcMemberMonth(member, year, month) {
     childCount: sum('childCount'), subCount: sum('subCount'), issueCount: sum('issueCount'),
     warnings: perProject.flatMap(r => r.warnings.map(w => `[${r.project.key}] ${w}`)),
     issuesDetail: perProject.flatMap(r => r.issuesDetail),
+    typeGroups: normalizeGroups(perProject.map(p => p.groups)),
     perProject
   };
 }
@@ -1210,6 +1243,41 @@ function varianceBase(r) {
     act: round1(withEst.reduce((s, p) => s + p.actMonth, 0)),
     excluded
   };
+}
+
+// Gộp nhóm theo loại task của nhiều kết quả. Tên loại được chuẩn hóa (bỏ emoji, vd "💻Code" thành "Code")
+// để cùng một loại ở các project khác nhau được cộng chung.
+function normalizeGroups(groupsList) {
+  const out = {};
+  for (const groups of groupsList) {
+    for (const [name, g] of Object.entries(groups || {})) {
+      const key = name === 'Others (Child PBIs)' ? name : classifyIssueType(name).label;
+      if (!out[key]) out[key] = { est: 0, act: 0, count: 0 };
+      out[key].est += g.est;
+      out[key].act += g.act;
+      out[key].count += g.count;
+    }
+  }
+  return out;
+}
+
+const TYPE_ORDER = ['Understand', 'Research', 'Design', 'Code', 'Configure', 'Review', 'Test', 'Document'];
+
+// Bảng tổng hợp giờ theo loại task (Test, Code, Review...), cùng dạng với breakdown trong Result
+function typeSummaryMd(groups, title) {
+  const entries = Object.entries(groups || {});
+  if (entries.length === 0) return '';
+  const rank = k => k === 'Others (Child PBIs)' ? 1000 : (TYPE_ORDER.indexOf(k) >= 0 ? TYPE_ORDER.indexOf(k) : 100);
+  entries.sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0]));
+  const estTotal = round1(entries.reduce((s, [, g]) => s + g.est, 0));
+  const actTotal = round1(entries.reduce((s, [, g]) => s + g.act, 0));
+  const rows = entries.map(([k, g]) => {
+    const pct = actTotal > 0 ? Math.round((g.act / actTotal) * 100) : 0;
+    const estCell = g.est > 0 ? `${fmtHrs(g.est)}h` : '-';
+    return `| ${k} | ${g.count} | ${estCell} | ${fmtHrs(g.act)}h | ${pct}% |`;
+  }).join('\n');
+  const count = entries.reduce((s, [, g]) => s + g.count, 0);
+  return `\n\n**${title || 'Tổng hợp theo loại task'}:**\n\n| Loại | Issues | Est | Act | Act % |\n|---|---|---|---|---|\n${rows}\n| **TOTAL** | ${count} | **${fmtHrs(estTotal)}h** | **${fmtHrs(actTotal)}h** | **100%** |`;
 }
 
 function projectTableMd(r, title) {
@@ -1266,7 +1334,7 @@ async function calcMonthFromTree(treeIssues, isSubtaskFn, year, month) {
 
 // Phần tính Est/Act dùng chung cho Root mode, Epic mode, Hours tab, Ad-hoc tab.
 // isSubtaskFn mặc định: có parentIssueId thì là Subtask (logic cũ).
-async function aggregateMonth(allIssues, year, month, initialWarnings, isSubtaskFn) {
+async function aggregateMonth(allIssues, year, month, initialWarnings, isSubtaskFn, skipHoursIds) {
   const isSubtaskOf = isSubtaskFn || (i => i.parentIssueId != null);
   const monthStart = `${year}-${pad2(month)}-01`;
   const lastDay = new Date(year, month, 0).getDate();
@@ -1291,10 +1359,18 @@ async function aggregateMonth(allIssues, year, month, initialWarnings, isSubtask
 
   const groups = {}; // type -> {est, act, count}
   const issuesDetail = []; // per-issue rows for listing/review
-  let estMonth = 0, actMonth = 0, childCount = 0, subCount = 0;
+  let estMonth = 0, actMonth = 0, childCount = 0, subCount = 0, skippedParents = 0;
 
   for (const issue of merged) {
     const isSubtask = isSubtaskOf(issue);
+
+    // PBI đã có subtask thì bỏ giờ của chính PBI, chỉ tính giờ của các subtask con
+    if (skipHoursIds && !isSubtask && skipHoursIds.has(issue.id)) {
+      skippedParents++;
+      warnings.push(`${issue.issueKey} (${issue.summary}): đã có subtask nên không tính giờ của PBI (Est ${fmtHrs(issue.estimatedHours ?? 0)}h, Act ${fmtHrs(issue.actualHours ?? 0)}h) để tránh tính trùng`);
+      continue;
+    }
+
     let est = issue.estimatedHours;
     let act = issue.actualHours;
     if (typeof est === 'undefined' || typeof act === 'undefined') {
@@ -1356,7 +1432,7 @@ async function aggregateMonth(allIssues, year, month, initialWarnings, isSubtask
 
   return {
     year, month, estMonth: round1(estMonth), actMonth: round1(actMonth),
-    groups, warnings, childCount, subCount, issueCount: merged.length, issuesDetail
+    groups, warnings, childCount, subCount, issueCount: merged.length - skippedParents, issuesDetail
   };
 }
 
