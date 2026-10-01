@@ -361,6 +361,11 @@
           <label style="text-transform:none; font-weight:500; letter-spacing:0;">Bỏ giờ của PBI nếu PBI đó đã có subtask (tránh tính trùng Est/Act giữa PBI và subtask)</label>
         </div>
 
+        <div class="toggle-row">
+          <input type="checkbox" id="dailyActualCheck" checked />
+          <label style="text-transform:none; font-weight:500; letter-spacing:0;">Kiểm tra Actual theo từng ngày, báo đỏ ngày vượt giờ/ngày (đọc lịch sử log giờ của từng issue nên chậm hơn)</label>
+        </div>
+
         <div class="field">
           <label>Thành viên <span class="req">*</span></label>
           <div class="checkbox-grid" id="hoursMemberChecks"></div>
@@ -388,6 +393,11 @@
         </div>
 
         <div class="preview-box" id="hoursResult"></div>
+
+        <div id="hoursDailyWrap" style="display:none;">
+          <div class="section-label">Giờ theo ngày (🔴 = vượt định mức giờ/ngày)</div>
+          <div class="preview-box" id="hoursDaily"></div>
+        </div>
 
         <div id="hoursTaskListWrap" style="display:none;">
           <div class="section-label">Danh sách task trong tháng (để đối chiếu / chỉnh sửa)</div>
@@ -984,6 +994,7 @@ async function runHoursReport() {
   document.getElementById('hoursWarnBox').style.display = 'none';
   document.getElementById('hoursCapacityWrap').style.display = 'none';
   document.getElementById('hoursTaskListWrap').style.display = 'none';
+  document.getElementById('hoursDailyWrap').style.display = 'none';
 
   if (!key) return showResultBox('hoursStatus', 'error', '⚠️ Vui lòng nhập Backlog API key.');
   if (!mo) return showResultBox('hoursStatus', 'error', '⚠️ Vui lòng chọn tháng cần tính.');
@@ -1047,6 +1058,18 @@ async function runHoursReport() {
         `</div>` +
         `<div class="cap-sub" style="margin-top:6px;">${monthLabel(mo.year, mo.month)} có ${weekdays} ngày t2→t6. Nếu số ngày nghỉ hoặc giờ/ngày không đúng thực tế, sửa lại 2 ô phía trên rồi bấm "Tính giờ" lại.</div>`;
       document.getElementById('hoursCapacityWrap').style.display = 'block';
+
+      if (document.getElementById('dailyActualCheck').checked) {
+        btn.innerHTML = '<span class="spinner-inline"></span>Đang đọc lịch sử log giờ...';
+        const da = await fetchDailyActuals(member, mo.year, mo.month, (done, total) => {
+          btn.innerHTML = `<span class="spinner-inline"></span>Đang đọc lịch sử log giờ (${done}/${total})...`;
+        });
+        document.getElementById('hoursDaily').innerHTML =
+          dailyTableHtml(da.days, hoursPerDay) || '<div class="cap-sub">Không có giờ nào được log trong tháng này.</div>';
+        document.getElementById('hoursDaily').style.display = 'block';
+        document.getElementById('hoursDailyWrap').style.display = 'block';
+        r.warnings.push(...da.warnings);
+      }
 
       if (r.issuesDetail.length > 0) {
         const OVER_THRESHOLD = 4; // giờ — Act vượt Est quá mức này thì bôi đỏ để soát lại
@@ -1118,6 +1141,19 @@ ${rows}
 
       const allWarnings = [];
       results.forEach(r => r.warnings.forEach(w => allWarnings.push(`${r.member.name}: ${w}`)));
+      if (document.getElementById('dailyActualCheck').checked) {
+        for (let i = 0; i < results.length; i++) {
+          const r = results[i];
+          const da = await fetchDailyActuals(r.member, mo.year, mo.month, (done, total) => {
+            btn.innerHTML = `<span class="spinner-inline"></span>Đọc lịch sử log giờ: ${r.member.name} (${i + 1}/${results.length}, ${done}/${total})...`;
+          });
+          const over = overloadedDays(da.days, hoursPerDay);
+          if (over.length > 0) {
+            allWarnings.unshift(`🔴 ${r.member.name} vượt ${fmtHrs(hoursPerDay)}h/ngày vào: ${over.map(d => `${d.slice(8)}/${d.slice(5, 7)} (${fmtHrs(da.days[d].act)}h)`).join(', ')}`);
+          }
+          da.warnings.forEach(w => allWarnings.push(`${r.member.name}: ${w}`));
+        }
+      }
       if (allWarnings.length > 0) {
         document.getElementById('hoursWarnList').innerHTML = allWarnings.map(w => `<li>${w}</li>`).join('');
         document.getElementById('hoursWarnBox').style.display = 'block';
@@ -1164,7 +1200,42 @@ async function calcMonth(scopeParams, year, month, opts = {}) {
   if (opts.skipParentsWithChildren) {
     skipHoursIds = await findIssuesWithChildren(merged, isSubtaskFn || (i => i.parentIssueId != null));
   }
-  return aggregateMonth(merged, year, month, paginationWarnings, isSubtaskFn, skipHoursIds);
+  // Actual của PBI không chia theo ngày chồng lấn (sẽ làm 5h bị tính thành 1.5h), mà lấy đúng số giờ
+  // được log trong tháng theo lịch sử cập nhật. Est vẫn chia theo ngày vì Est là kế hoạch.
+  let actOverride;
+  if (opts.pbiActualFromHistory) {
+    const subFn = isSubtaskFn || (i => i.parentIssueId != null);
+    const teamIds = new Set(TEAM.map(m => m.id));
+    const pbis = merged.filter(i =>
+      !subFn(i) && !(skipHoursIds && skipHoursIds.has(i.id)) &&
+      i.assignee && teamIds.has(i.assignee.id) && (i.actualHours ?? 0) !== 0);
+    actOverride = new Map();
+    await mapLimit(pbis, 6, async issue => {
+      const r = await loggedActualInMonth(issue, year, month);
+      actOverride.set(issue.id, r.inMonth);
+      if (Math.abs(r.inMonth - (issue.actualHours || 0)) >= 0.1) {
+        paginationWarnings.push(`${issue.issueKey} (${issue.summary}): Actual của PBI lấy theo giờ log trong tháng (${fmtHrs(r.inMonth)}h trong tháng, tổng ${fmtHrs(issue.actualHours || 0)}h)`);
+      }
+    });
+  }
+  return aggregateMonth(merged, year, month, paginationWarnings, isSubtaskFn, skipHoursIds, actOverride);
+}
+
+// Số giờ Actual được log trong tháng của 1 issue, theo lịch sử cập nhật (ngày theo giờ Việt Nam)
+async function loggedActualInMonth(issue, year, month) {
+  const monthStart = `${year}-${pad2(month)}-01`;
+  const monthEnd = `${year}-${pad2(month)}-${pad2(new Date(year, month, 0).getDate())}`;
+  const comments = await fetchIssueComments(issue.issueKey);
+  let inMonth = 0;
+  for (const c of comments) {
+    for (const ch of (c.changeLog || [])) {
+      if (ch.field !== 'actualHours') continue;
+      const delta = (parseFloat(ch.newValue) || 0) - (parseFloat(ch.originalValue) || 0);
+      const day = new Date(new Date(c.created).getTime() + VN_OFFSET_MS).toISOString().slice(0, 10);
+      if (day >= monthStart && day <= monthEnd) inMonth += delta;
+    }
+  }
+  return { inMonth: round1(inMonth) };
 }
 
 // Tìm các issue cấp PBI (không phải subtask) đang có issue con, bất kể con đó giao cho ai.
@@ -1201,6 +1272,7 @@ async function buildIsSubtaskFn(issues) {
 function hoursCalcOpts() {
   return {
     resolveEpicParents: true,
+    pbiActualFromHistory: true,
     skipParentsWithChildren: !!document.getElementById('skipParentHours')?.checked
   };
 }
@@ -1243,6 +1315,121 @@ function varianceBase(r) {
     act: round1(withEst.reduce((s, p) => s + p.actMonth, 0)),
     excluded
   };
+}
+
+// ── Actual theo từng ngày (đọc lịch sử cập nhật của từng issue) ─────────────
+// Backlog không lưu giờ theo ngày trên issue, nhưng mỗi lần ai đó sửa trường Actual Hours đều có
+// một dòng lịch sử (changeLog "actualHours") kèm thời điểm. Cộng chênh lệch (mới - cũ) theo ngày
+// là ra số giờ được log trong ngày đó. Ngày tính theo giờ Việt Nam (UTC+7). Giờ được tính cho
+// người được assign issue.
+const VN_OFFSET_MS = 7 * 3600 * 1000;
+
+async function mapLimit(arr, limit, fn) {
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, arr.length) }, async () => {
+    while (true) {
+      const idx = next++;
+      if (idx >= arr.length) break;
+      await fn(arr[idx], idx);
+    }
+  });
+  await Promise.all(workers);
+}
+
+async function fetchIssueComments(issueKey) {
+  const byId = new Map();
+  let minId;
+  while (true) {
+    const batch = await backlogGet(`/api/v2/issues/${issueKey}/comments`, {
+      count: 100, order: 'asc', ...(minId ? { minId } : {})
+    });
+    const before = byId.size;
+    batch.forEach(c => byId.set(c.id, c));
+    if (batch.length < 100 || byId.size === before) break; // hết trang hoặc không có comment mới
+    minId = batch[batch.length - 1].id;
+  }
+  return Array.from(byId.values());
+}
+
+async function fetchDailyActuals(member, year, month, onProgress) {
+  const monthStart = `${year}-${pad2(month)}-01`;
+  const monthEnd = `${year}-${pad2(month)}-${pad2(new Date(year, month, 0).getDate())}`;
+  const selected = member.id === DIEM_ID ? getSelectedDiemProjects() : [];
+  const projects = selected.length > 0 ? selected : [DIEM_PROJECTS[0]];
+
+  // Issue của người này được cập nhật từ đầu tháng (log giờ trong tháng thì chắc chắn có cập nhật)
+  let issues = [];
+  for (const proj of projects) {
+    issues.push(...await fetchAllIssues({ assigneeId: [member.id], projectId: [proj.id], updatedSince: monthStart }));
+  }
+  issues = issues.filter(i => !(i.summary || '').includes('[ROOT]'));
+
+  // Cùng quy tắc với phần tổng: PBI đã có subtask thì không tính giờ của PBI
+  let skipIds = new Set();
+  if (document.getElementById('skipParentHours')?.checked) {
+    skipIds = await findIssuesWithChildren(issues, await buildIsSubtaskFn(issues));
+  }
+
+  const targets = issues.filter(i => (i.actualHours ?? 0) !== 0 && !skipIds.has(i.id));
+  const days = {};
+  const warnings = [];
+  let done = 0;
+  if (onProgress) onProgress(0, targets.length);
+
+  await mapLimit(targets, 6, async issue => {
+    const comments = await fetchIssueComments(issue.issueKey);
+    let totalDelta = 0;
+    for (const c of comments) {
+      for (const ch of (c.changeLog || [])) {
+        if (ch.field !== 'actualHours') continue;
+        const delta = (parseFloat(ch.newValue) || 0) - (parseFloat(ch.originalValue) || 0);
+        totalDelta += delta;
+        const day = new Date(new Date(c.created).getTime() + VN_OFFSET_MS).toISOString().slice(0, 10);
+        if (day < monthStart || day > monthEnd) continue;
+        if (!days[day]) days[day] = { act: 0, items: [] };
+        days[day].act += delta;
+        const existing = days[day].items.find(x => x.key === issue.issueKey);
+        if (existing) existing.act += delta; else days[day].items.push({ key: issue.issueKey, act: delta });
+      }
+    }
+    const residual = round1((issue.actualHours || 0) - totalDelta);
+    if (Math.abs(residual) >= 0.1) {
+      warnings.push(`${issue.issueKey} (${issue.summary}): ${fmtHrs(residual)}h Actual không có trong lịch sử cập nhật (có thể nhập lúc tạo issue), không tính vào ngày nào`);
+    }
+    done++;
+    if (onProgress) onProgress(done, targets.length);
+  });
+
+  return { days, warnings, issueCount: targets.length };
+}
+
+function overloadedDays(days, limit) {
+  if (!(limit > 0)) return [];
+  return Object.keys(days).sort().filter(d => round1(days[d].act) > limit);
+}
+
+const WEEKDAY_LABELS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+function dailyTableHtml(days, limit) {
+  const dates = Object.keys(days).sort().filter(d => Math.abs(days[d].act) > 0.001);
+  if (dates.length === 0) return '';
+  const total = round1(dates.reduce((sum, d) => sum + days[d].act, 0));
+  const over = overloadedDays(days, limit);
+  const summary = (over.length > 0
+    ? `<div style="margin-bottom:4px;color:var(--error-text);font-weight:700;">🔴 ${over.length} ngày vượt ${fmtHrs(limit)}h: ${over.map(d => `${d.slice(8)}/${d.slice(5, 7)} (${fmtHrs(days[d].act)}h)`).join(', ')}</div>`
+    : `<div style="margin-bottom:4px;color:var(--success-text);font-weight:700;">✅ Không có ngày nào vượt ${fmtHrs(limit)}h</div>`)
+    + `<div style="margin-bottom:8px;">Tổng giờ được log trong tháng: <b>${fmtHrs(total)}h</b></div>`;
+  const rows = dates.map(d => {
+    const isOver = over.includes(d);
+    const wd = WEEKDAY_LABELS[parseDateUTC(d).getUTCDay()];
+    const items = days[d].items.filter(i => Math.abs(i.act) > 0.001).sort((a, b) => b.act - a.act);
+    const shown = items.slice(0, 5).map(i =>
+      `<a href="${BACKLOG_HOST}/view/${i.key}" target="_blank" rel="noopener noreferrer" class="task-link">${escapeHtml(i.key)}</a> (${fmtHrs(i.act)}h)`).join(', ');
+    const more = items.length > 5 ? ` +${items.length - 5}` : '';
+    return `<tr${isOver ? ' class="task-row-over"' : ''}><td>${d.slice(8)}/${d.slice(5, 7)} ${wd}</td>` +
+      `<td>${fmtHrs(days[d].act)}h${isOver ? ' 🔴' : ''}</td><td>${shown}${more}</td></tr>`;
+  }).join('');
+  return summary + `<table><thead><tr><th>Ngày</th><th>Act</th><th>Task</th></tr></thead><tbody>${rows}</tbody></table>` +
+    `<div class="cap-sub" style="margin-top:8px;">Lấy từ lịch sử cập nhật Actual Hours của từng issue, ngày theo giờ Việt Nam (UTC+7), tính cho người được assign. Đây là giờ được log trong tháng nên có thể khác "Total Actual" ở trên (tính theo ngày Start/Due của issue).</div>`;
 }
 
 // Gộp nhóm theo loại task của nhiều kết quả. Tên loại được chuẩn hóa (bỏ emoji, vd "💻Code" thành "Code")
@@ -1334,7 +1521,7 @@ async function calcMonthFromTree(treeIssues, isSubtaskFn, year, month) {
 
 // Phần tính Est/Act dùng chung cho Root mode, Epic mode, Hours tab, Ad-hoc tab.
 // isSubtaskFn mặc định: có parentIssueId thì là Subtask (logic cũ).
-async function aggregateMonth(allIssues, year, month, initialWarnings, isSubtaskFn, skipHoursIds) {
+async function aggregateMonth(allIssues, year, month, initialWarnings, isSubtaskFn, skipHoursIds, actOverride) {
   const isSubtaskOf = isSubtaskFn || (i => i.parentIssueId != null);
   const monthStart = `${year}-${pad2(month)}-01`;
   const lastDay = new Date(year, month, 0).getDate();
@@ -1401,6 +1588,8 @@ async function aggregateMonth(allIssues, year, month, initialWarnings, isSubtask
       if (a == null) { warnings.push(`${issue.issueKey} (${issue.summary}): actualHours = null → counted as 0h`); a = 0; }
       estContrib = round1(e * ratio);
       actContrib = round1(a * ratio);
+      // PBI trong Hours report: Actual là giờ đã log trong tháng, không chia theo ngày
+      if (actOverride && actOverride.has(issue.id)) actContrib = actOverride.get(issue.id);
     }
 
     const key = isSubtask ? (issue.issueType?.name || 'Subtask') : 'Others (Child PBIs)';
@@ -1417,6 +1606,7 @@ async function aggregateMonth(allIssues, year, month, initialWarnings, isSubtask
       summary: issue.summary,
       type: issue.issueType?.name || (isSubtask ? 'Subtask' : 'PBI'),
       status: issue.status?.name || '',
+      isSubtask,
       startDate: issue.startDate ? issue.startDate.slice(0,10) : '',
       dueDate: issue.dueDate ? issue.dueDate.slice(0,10) : '',
       est: estContrib,
